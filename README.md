@@ -80,8 +80,12 @@ src/
 ## Environment variables
 
 Read exclusively by `src/lib/env.ts`, which throws at startup if a required variable is missing
-or invalid — see [`.env.example`](./.env.example) for documentation and `.env` for the committed,
-non-secret local/CI defaults.
+or invalid — see [`.env.example`](./.env.example) for documentation. For local development, copy
+it to a gitignored `.env.local`:
+
+```bash
+cp .env.example .env.local
+```
 
 | Variable              | Required | Description                                        |
 | --------------------- | -------- | -------------------------------------------------- |

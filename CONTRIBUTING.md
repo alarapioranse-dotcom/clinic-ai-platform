@@ -30,6 +30,13 @@ reading or writing a diff:
 
 ## Running the checks locally
 
+Copy `.env.example` to `.env.local` first (gitignored, never committed) so `NEXT_PUBLIC_APP_URL`
+and `NEXT_PUBLIC_APP_ENV` are set — `src/lib/env.ts` throws if they're missing:
+
+```bash
+cp .env.example .env.local
+```
+
 CI runs four checks; run them in this order before pushing:
 
 ```bash

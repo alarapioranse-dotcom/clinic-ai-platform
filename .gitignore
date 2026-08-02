@@ -9,8 +9,7 @@
 /build
 
 # env files
-# .env holds non-secret public defaults and is intentionally committed;
-# only local overrides are ignored.
+.env
 .env.local
 .env.*.local
 

@@ -1,0 +1,31 @@
+# dependencies
+/node_modules
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# env files
+# .env holds non-secret public defaults and is intentionally committed;
+# only local overrides are ignored.
+.env.local
+.env.*.local
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# editor / os
+.DS_Store
+*.pem
+.vscode/*
+!.vscode/extensions.json
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts

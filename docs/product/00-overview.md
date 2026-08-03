@@ -55,9 +55,10 @@ rather than quietly decided:
 2. **Four roles vs. two.** This spec uses four roles — owner, admin, practitioner, receptionist —
    because that's the granularity the sitemap and screen access rules need to be meaningful. P2's
    stated acceptance criterion is only "roles exist for at least 'clinic admin' and 'staff'" — a
-   floor, not a ceiling, so four roles don't contradict it outright. But a role model is the kind
-   of decision Deliverable B and P2's implementation will treat as costly to reverse once accounts
-   exist, so it should get an ADR before P2 starts, not be inherited by default from this document.
+   floor, not a ceiling, so four roles don't contradict it outright. Because a role model is the
+   kind of decision P2's implementation will treat as costly to reverse once accounts exist, this
+   is no longer left as a bare note: see
+   [`docs/adr/0004-staff-role-model.md`](../adr/0004-staff-role-model.md) (Proposed).
 3. **Screen-to-phase mapping is inferred, not specified.** The roadmap's phase acceptance criteria
    describe backend capability, not which screen ships with it. `05-screen-inventory.md` assigns
    each screen to the earliest phase whose acceptance criteria imply it must exist, and marks that

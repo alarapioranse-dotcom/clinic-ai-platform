@@ -56,6 +56,10 @@ silently assumed. Screens are in the same order as
 - Given no session, when a visitor navigates here directly, then they are redirected to `/login`.
 - Given the backend is unavailable, when any role opens this screen, then they see "Couldn't load
   conversations" with a retry action.
+- Given a conversation the assistant escalated for any reason in the clinical-refusal criteria
+  below, when any role opens the list, then that conversation appears flagged as needing staff
+  attention — it is never left indistinguishable from a conversation the assistant is still
+  handling on its own.
 
 ## `/dashboard/conversations/[id]`
 
@@ -69,6 +73,20 @@ silently assumed. Screens are in the same order as
 - Given the backend is unavailable, when a receptionist, admin, or owner tries to send a reply,
   then they see "Message failed to send" with a retry action, and the unsent message is not lost
   from their input.
+
+### Clinical-refusal behavior (charter §3)
+
+Charter §3 makes "administrative answers only, never clinical" a core product principle. A
+principle with no acceptance criterion cannot be tested, so it is stated here as the assistant's
+observable behavior within a conversation:
+
+- Given a patient asks a clinical question, when the assistant processes it, then it does not
+  answer, marks the conversation "needs staff", and tells the patient a team member will follow
+  up.
+- Given a patient message indicates a medical emergency, when the assistant processes it, then it
+  directs the patient to emergency services and attempts no booking.
+- Given the assistant cannot ground an answer in this clinic's own data, when it would otherwise
+  reply, then it escalates instead of guessing.
 
 ## `/dashboard/patients`
 

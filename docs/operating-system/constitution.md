@@ -24,26 +24,30 @@ contributors, whose conduct is governed by `CONTRIBUTING.md` and the Charter.
 
 ## 3. Source of Truth
 
-| Order | Source                |
-| ----- | --------------------- |
-| 1     | Repository            |
-| 2     | Approved ADRs         |
-| 3     | Project Charter       |
-| 4     | Product Documentation |
-| 5     | Notion                |
-| 6     | AI Conversations      |
+| Order | Source                                                          |
+| ----- | --------------------------------------------------------------- |
+| 1     | Project Charter                                                 |
+| 2     | This Constitution                                               |
+| 3     | Accepted ADRs                                                   |
+| 4     | Roadmap                                                         |
+| 5     | Product Specifications                                          |
+| 6     | Executed code and configuration (`src/`, CI, package manifests) |
+| 7     | Notion                                                          |
+| 8     | AI Conversations                                                |
+
+The Project Charter is the highest governing document. Where anything else conflicts with it, the
+Charter governs until it is amended.
+
+An ADR may refine the Charter but may never override it. If an ADR requires a change to the
+Charter, the Charter must be amended first, through a separate human-reviewed pull request, before
+the ADR can be accepted.
+
+Code that contradicts an Accepted ADR is a defect in the code, not a revision of the decision.
 
 AI Conversations rank last because a conversation is not committed, not reviewed, and not
 versioned — it can be misremembered, edited in place by the platform, or simply not seen by the
 next person or agent to touch the work. Only what's written into the repository is binding on
 future work.
-
-**Contradiction found, not resolved here:** this ordering places Approved ADRs above the Project
-Charter. The Charter's own opening statement says it is "the highest-level reference... where
-anything else in this repository conflicts with it, this charter governs until it is amended."
-Those two claims cannot both hold. This document does not decide which one wins — that is a
-human decision, tracked here as open pending a Charter amendment or a revision to this ordering.
-Until resolved, treat this section as advisory rather than settled.
 
 ## 4. Human Authority
 

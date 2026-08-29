@@ -4,6 +4,11 @@
 
 Accepted
 
+Accepted by: Ahmed (project owner)
+Accepted on: 2026-08-29
+Recorded in: PR #4
+Note: decision content approved by the owner in session; status recorded retroactively.
+
 ## Date
 
 2026-08-29
@@ -113,3 +118,12 @@ that specific record was judged safe to keep.
   (e.g., for a legal hold), but a recoverable key means the data was never actually erased — it
   remains personal data under GDPR by definition, so this doesn't satisfy Article 17 either.
   Rejected.
+
+## Assumptions and limits
+
+- This ADR assumes GDPR is the sole governing privacy regime.
+- It does NOT cover jurisdictions with mandatory minimum health-data retention or data
+  localisation requirements. Serving such a jurisdiction requires a new ADR that supersedes or
+  amends this one.
+- Audit log records are OUT OF SCOPE of this ADR. Their erasure behaviour is undecided and
+  requires a separate ADR.

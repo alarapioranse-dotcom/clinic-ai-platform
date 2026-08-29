@@ -36,16 +36,24 @@ for everything else by contrast.
 ## GDPR Article 17 (erasure), conceptually
 
 Article 17 gives a Patient the right to have their personal data erased. This model's entities most
-directly implicated are Patient, Conversation, Message, and Appointment. Two erasure strategies
-are possible and this document does not choose between them (Candidate ADR 4 in
-[`00-overview.md`](./00-overview.md)):
+directly implicated are Patient, Conversation, Message, and Appointment. The erasure strategy is
+decided in [ADR-0005](../adr/0005-patient-erasure-strategy.md) (Accepted): irreversible
+anonymisation, applied per entity, with deletion as the default wherever anonymisation cannot be
+demonstrated — neither full deletion of everything referencing the Patient, nor retaining
+everything behind access controls. In brief (see ADR-0005 for the full decision and its
+safeguards):
 
-- **Full deletion** — the Patient record and everything referencing it (Conversations, Messages,
-  Appointments) is removed outright.
-- **Anonymize and retain** — the Patient's identifying attributes are stripped or replaced, but
-  the Conversation/Message/Appointment records remain, disconnected from an identifiable person,
-  to preserve the Clinic's own operational or legal record (e.g., proof of what was communicated,
-  for dispute purposes).
+- **Patient** — identifying attributes are irreversibly anonymised; no reversible mapping or
+  recoverable key survives.
+- **Appointment** — retained in de-identified form only where the Clinic has an independent legal
+  and operational basis under Article 17(3); otherwise deleted.
+- **Conversation and Message** — deletion is the default; retained only where irreversible
+  anonymisation of that specific record can be demonstrated, which free text is presumed unable to
+  satisfy on identifier-scrubbing alone.
+
+See [`01-entities.md`](./01-entities.md) for the erasure behaviour recorded against every entity,
+including the ones ADR-0005 does not address directly (Clinic, Service, StaffMember, Invitation,
+KnowledgeDocument).
 
 Because a Clinic is scoped per-tenant and a Patient is scoped per-Clinic (Candidate ADR 1), an
 erasure request made to one Clinic structurally cannot and does not affect any record the same
@@ -54,16 +62,19 @@ record. This is a direct consequence of tenant isolation, not a separate mechani
 
 ## Entities containing Article 9 data
 
-Per [`01-entities.md`](./01-entities.md)'s classification: Conversation and Message are treated as
-GDPR Article 9 Special Category Data by default, because their content is Patient-authored free
-text the product cannot constrain, regardless of the Assistant being restricted to administrative
-topics (charter §3). Escalation and Appointment are classified as ordinary Personal Data but can
-be elevated in specific cases — an Escalation whose reason is "clinical question" indicates a
-health-related topic was raised even without repeating it; an Appointment referencing a
-health-revealing Service name (e.g., a psychiatric or sexual-health service) indicates a health
-category by association. Neither elevation is modeled as a different entity — it's a handling
-note, since splitting "sometimes-sensitive Appointment" into two entity types isn't required by
-any flow.
+Per [`01-entities.md`](./01-entities.md)'s classification: Conversation, Message, and Escalation
+are all treated as GDPR Article 9 Special Category Data by default. Conversation and Message
+because their content is Patient-authored free text the product cannot constrain, regardless of
+the Assistant being restricted to administrative topics (charter §3). Escalation because its
+`reason` field, for the `clinical-question` and `medical-emergency` values specifically, states
+that a health-related topic was raised even more directly than the free text it accompanies — and
+because, as an internal entity of the Conversation aggregate with no independent existence outside
+it, its classification cannot be looser than its containing Conversation's. Appointment is
+classified as ordinary Personal Data but can be elevated in a specific case — an Appointment
+referencing a health-revealing Service name (e.g., a psychiatric or sexual-health service)
+indicates a health category by association. This elevation is not modeled as a different entity —
+it's a handling note, since splitting "sometimes-sensitive Appointment" into two entity types
+isn't required by any flow.
 
 ## Retention, conceptually
 

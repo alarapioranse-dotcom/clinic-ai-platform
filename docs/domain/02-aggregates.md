@@ -1,8 +1,10 @@
 # Aggregates
 
-Every aggregate below states the invariant it protects, per the review constraint that no
+Every aggregate below states the invariant(s) it protects, per the review constraint that no
 aggregate may exist without one. Where an aggregate's invariant is thin, that is argued
-explicitly rather than left implicit.
+explicitly rather than left implicit. Where an invariant's true consistency scope is broader than
+a single aggregate instance, that is argued explicitly too, rather than overstating what the
+boundary actually protects.
 
 ## Clinic aggregate
 
@@ -81,11 +83,29 @@ explicitly rather than left implicit.
 - **What lives inside** — TimeSlot (value object).
 - **What is referenced by identity only** — Clinic, Patient, Service, StaffMember (as
   practitioner) — all referenced, none contained.
-- **Business invariant protected** — no two non-Cancelled Appointments for the same Practitioner
-  may have overlapping TimeSlots. This is the direct domain answer to the practitioner persona's
-  named fear ("being double-booked", `docs/product/01-personas.md`) and to the acceptance
-  criterion that a concurrently-taken slot must be caught, not silently overwritten
-  (`06-acceptance-criteria.md`).
+- **Business invariants protected** —
+  1. **No double-booking (hard invariant).** No two non-Cancelled Appointments for the same
+     Practitioner — the only schedulable resource this model recognizes; a distinct Resource
+     concept (e.g., a room or piece of equipment, schedulable independently of a Practitioner) is
+     new scope this document does not assume — within the same Clinic may have overlapping
+     TimeSlots. Approved by Ahmed as a hard domain invariant: a conflicting Appointment is
+     rejected outright at the point of creation or reschedule, never merely flagged as a warning a
+     staff member can override. This is the direct domain answer to the practitioner persona's
+     named fear ("being double-booked", `docs/product/01-personas.md`) and to the acceptance
+     criterion that a concurrently-taken slot must be caught, not silently overwritten
+     (`06-acceptance-criteria.md`).
+  2. **Same-Clinic references.** An Appointment's Patient, Service, and practitioner StaffMember
+     must all belong to the same Clinic as the Appointment itself (`04-relationships.md`) — an
+     Appointment can never be assembled from parts belonging to different clinics.
+- **A boundary note on invariant 1** — unlike every other invariant in this document, the
+  no-double-booking rule cannot be protected by a single Appointment aggregate instance acting
+  alone: it constrains the relationship between _two different_ Appointment instances that share a
+  Practitioner. Its true consistency scope is "all Appointments for one Practitioner within one
+  Clinic," not one Appointment. This document states the rule as a hard invariant that must hold at
+  all times; Deliverable C is responsible for guaranteeing it holds atomically at the moment a
+  conflicting Appointment would otherwise be created or a conflicting reschedule would otherwise be
+  saved — this document does not say how (no database or application-code mechanism is specified
+  here).
 
 ## KnowledgeDocument aggregate
 
@@ -95,7 +115,14 @@ explicitly rather than left implicit.
 - **What is referenced by identity only** — Clinic (owner). Not referenced by Conversation or
   Message — grounding a specific reply in a specific document is Deliverable C's concern
   (the AI pipeline), not this model's.
-- **Business invariant protected** — the Assistant may only draw on a KnowledgeDocument whose
-  status is Ready; a Processing or Failed document is never used to answer a Patient, even
-  partially. This is the domain-level guarantee behind the upload flow's explicit
-  Processing → Ready transition (`docs/product/03-user-flows.md`).
+- **Business invariant protected** — a KnowledgeDocument's status only ever moves forward:
+  Processing → Ready or Processing → Failed, never backward (a document does not return to
+  Processing from Ready or Failed — a corrected file is a new upload, producing a new
+  KnowledgeDocument). This is the aggregate's own internal-consistency invariant, and the guarantee
+  behind the upload flow's explicit Processing → Ready transition (`docs/product/03-user-flows.md`).
+- **Not an aggregate invariant** — "the Assistant may only draw on a KnowledgeDocument whose status
+  is Ready" is a real rule (`docs/product/03-user-flows.md`: "assistant can draw on this document"
+  only after Ready), but it constrains how a _different_ system — the AI pipeline — may consume
+  this aggregate's state; it is not something the KnowledgeDocument aggregate itself enforces about
+  its own transitions. Deliverable C's retrieval logic is responsible for checking status before
+  use.

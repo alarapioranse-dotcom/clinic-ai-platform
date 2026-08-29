@@ -1,7 +1,10 @@
 # Entities
 
-Every entity below uses the same nine-part structure. "Actor" values are drawn from the fixed set:
-Patient, Receptionist, Practitioner, Owner, Admin, Assistant, System.
+Every entity below uses the same ten-part structure. "Actor" values are drawn from the fixed set:
+Patient, Receptionist, Practitioner, Owner, Admin, Assistant, System. Part 10, "Erasure behaviour,"
+records how [ADR-0005](../adr/0005-patient-erasure-strategy.md) (Accepted) applies to that entity —
+including "not addressed by ADR-0005" where that's the honest answer, rather than leaving the
+question unaddressed silently.
 
 ## Clinic
 
@@ -16,11 +19,15 @@ Patient, Receptionist, Practitioner, Owner, Admin, Assistant, System.
    other actor transitions it within Deliverable A's scope.
 7. **Validation rules** — must have a name and at least one contact channel before onboarding can
    complete (sign-up flow requires "clinic name, contact, owner email").
-8. **Business rules** — a Clinic's working hours and service list are edited only as an owner/admin
-   action (`/dashboard/settings/clinic`, `/dashboard/knowledge-base` is separate — services aren't
-   knowledge documents).
+8. **Business rules** — a Clinic's default working hours and service list are edited only as an
+   owner/admin action (`/dashboard/settings/clinic`, `/dashboard/knowledge-base` is separate —
+   services aren't knowledge documents). These are Clinic-wide defaults; a Practitioner may
+   override them individually (see StaffMember, below).
 9. **Data classification** — Operational Data. (Clinic contact details are the clinic's own
    business information, not a natural person's personal data in the GDPR sense relevant here.)
+10. **Erasure behaviour (ADR-0005)** — not addressed by ADR-0005; a Clinic is the tenant itself,
+    and its data is the clinic's own operational information, not a Patient's personal data
+    subject to Article 17 erasure.
 
 ## Service
 
@@ -42,6 +49,9 @@ Patient, Receptionist, Practitioner, Owner, Admin, Assistant, System.
    deliverable's PR description: a Service's name can itself reveal a sensitive health category
    (e.g., a psychiatric or sexual-health service name), which taints any Appointment referencing
    it for a specific Patient.
+10. **Erasure behaviour (ADR-0005)** — not addressed by ADR-0005; a Service is Operational Data
+    belonging to the Clinic, not personal data tied to a specific Patient, so a Patient's erasure
+    request has no direct effect on it.
 
 ## StaffMember
 
@@ -62,8 +72,16 @@ Patient, Receptionist, Practitioner, Owner, Admin, Assistant, System.
    (ADR-0004); exactly one email.
 8. **Business rules** — a Clinic must always have at least one Owner (no flow addresses removing
    the last owner; treated here as forbidden by default, since nothing describes clinic
-   ownership transfer).
+   ownership transfer). A StaffMember with role Practitioner may optionally have their own
+   WorkingHours; when present, it overrides the Clinic's default WorkingHours for that Practitioner
+   specifically — approved by Ahmed (see [`00-overview.md`](./00-overview.md)). When absent, the
+   Clinic default applies to that Practitioner; not having an override is not a validation failure,
+   since the Clinic default is always a complete fallback.
 9. **Data classification** — Personal Data (an identifiable staff member's name, email, role).
+10. **Erasure behaviour (ADR-0005)** — not addressed by ADR-0005, which is scoped to Patient
+    erasure specifically. A Staff Member's own right to erasure of their own personal data, as a
+    data subject in their own right, is a separate and still-unaddressed question — not to be
+    assumed resolved by this ADR.
 
 ## Invitation
 
@@ -83,6 +101,9 @@ Patient, Receptionist, Practitioner, Owner, Admin, Assistant, System.
 8. **Business rules** — an email already invited or already a StaffMember of the same Clinic
    cannot receive a second Pending Invitation (flow's "already invited/member" branch).
 9. **Data classification** — Personal Data (an invitee's email and assigned role).
+10. **Erasure behaviour (ADR-0005)** — not addressed by ADR-0005, for the same reason as
+    StaffMember: an invitee's own personal-data erasure rights are a separate question from
+    Patient erasure.
 
 ## Patient
 
@@ -107,6 +128,9 @@ Patient, Receptionist, Practitioner, Owner, Admin, Assistant, System.
 9. **Data classification** — Personal Data at minimum; see
    [`06-multi-tenancy.md`](./06-multi-tenancy.md) for why a Patient's associated Conversations may
    escalate this to GDPR Article 9 Special Category Data in practice.
+10. **Erasure behaviour (ADR-0005)** — the record ADR-0005 is written for. On an Article 17
+    request, this record's identifying attributes are irreversibly anonymised; no reversible
+    mapping or recoverable key to the original identity is retained anywhere.
 
 ## Conversation
 
@@ -134,6 +158,12 @@ Patient, Receptionist, Practitioner, Owner, Admin, Assistant, System.
    product principle restricts the Assistant to administrative topics (charter §3), the Patient is
    free-text and may describe symptoms or conditions regardless of what's asked; the model treats
    Conversation content as potentially health-related unless proven otherwise, not the reverse.
+10. **Erasure behaviour (ADR-0005)** — deletion is the default on the owning Patient's erasure
+    request. Retained only if this specific Conversation can be demonstrated to be irreversibly
+    anonymised such that no natural person can reasonably be re-identified from it — that judgment
+    must itself be recorded and demonstrable. Free text is presumed non-anonymisable (ADR-0005,
+    Safeguard 2): removing names, phone numbers, or other known identifiers is not sufficient on
+    its own to justify retention.
 
 ## Message
 
@@ -154,6 +184,10 @@ Patient, Receptionist, Practitioner, Owner, Admin, Assistant, System.
    from the sender's input, meaning it was never recorded as sent.
 9. **Data classification** — GDPR Article 9 Special Category Data by default, for the same reason
    as Conversation: content is unconstrained free text from a Patient.
+10. **Erasure behaviour (ADR-0005)** — the same default as its containing Conversation: deletion,
+    unless this specific Message is demonstrated to be irreversibly anonymised. A Message is
+    judged individually — its containing Conversation being retained does not by itself mean every
+    Message within it is safe to retain.
 
 ## Escalation
 
@@ -177,8 +211,18 @@ Patient, Receptionist, Practitioner, Owner, Admin, Assistant, System.
    Remaining — no flow names a fifth reason, but none guarantees these four are exhaustive either).
 8. **Business rules** — a Conversation cannot be Resolved while it has an open (Raised or
    Acknowledged, not yet Closed) Escalation.
-9. **Data classification** — Personal Data at minimum, since the reason field alone can indicate a
-   Patient asked a clinical question; treated the same as Conversation for handling purposes.
+9. **Data classification** — GDPR Article 9 Special Category Data by default, for the
+   `clinical-question` and `medical-emergency` reasons specifically: the reason code alone states
+   that a health-related topic was raised, more directly than the free text it accompanies. The
+   `ungroundable-answer` and `patient-requested-human` reasons don't by themselves indicate a
+   health topic, but are classified the same way for consistency — an Escalation has no
+   independent existence outside the Conversation that raised it (see Aggregate owner, above), so
+   its classification cannot be looser than its containing Conversation's.
+10. **Erasure behaviour (ADR-0005)** — an Escalation is an internal entity of the Conversation
+    aggregate with no independent identity outside it ([`02-aggregates.md`](./02-aggregates.md));
+    it is deleted or anonymised in lockstep with its containing Conversation, never separately.
+    ADR-0005 does not name Escalation directly — this follows from the aggregate boundary already
+    established, not a new decision.
 
 ## Appointment
 
@@ -200,14 +244,20 @@ Patient, Receptionist, Practitioner, Owner, Admin, Assistant, System.
    booking conversation; Practitioner never transitions it (view-only, ADR-0004).
 7. **Validation rules** — references exactly one Patient, one Service, one Practitioner
    (StaffMember with role practitioner), and one TimeSlot.
-8. **Business rules** — no two non-Cancelled Appointments for the same Practitioner may have
-   overlapping TimeSlots (the aggregate's invariant, protecting against the double-booking every
-   practitioner persona fears); a Cancelled or past Appointment cannot be rescheduled
+8. **Business rules** — a hard domain invariant, approved by Ahmed: no two non-Cancelled
+   Appointments for the same Practitioner — the only schedulable resource this model recognizes —
+   within the same Clinic may have overlapping TimeSlots. A conflicting Appointment is rejected
+   outright at creation or reschedule time, never merely flagged as a warning a staff member can
+   override (see [`02-aggregates.md`](./02-aggregates.md) for the aggregate-boundary discussion of
+   this invariant). A Cancelled or past Appointment cannot be rescheduled
    (`06-acceptance-criteria.md`).
 9. **Data classification** — Personal Data (links an identifiable Patient to a time, a service,
    and a practitioner); the Service referenced may elevate this to GDPR Article 9 Special Category
    Data when the service name itself is health-revealing (see Service, above, and this
    deliverable's PR description).
+10. **Erasure behaviour (ADR-0005)** — retained in de-identified form only where the Clinic has an
+    independent legal and operational basis under Article 17(3); absent that basis, an Appointment
+    referencing an erased Patient is deleted, not merely de-identified.
 
 ## KnowledgeDocument
 
@@ -230,3 +280,7 @@ Patient, Receptionist, Practitioner, Owner, Admin, Assistant, System.
 9. **Data classification** — Operational Data as a rule, with a standing risk (see this
    deliverable's PR description) that a clinic could upload a document containing patient
    information by mistake, which this model cannot prevent structurally — only flag.
+10. **Erasure behaviour (ADR-0005)** — not addressed by ADR-0005; a Knowledge Document is
+    Operational Data owned by the Clinic, not personal data tied to a specific Patient, so a
+    Patient's erasure request has no direct effect on it. The standing risk noted above (a clinic
+    accidentally uploading patient information) is a separate concern ADR-0005 does not resolve.

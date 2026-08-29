@@ -1,18 +1,25 @@
 # Project Summary
 
+> This file holds pointers, never facts. If a statement here could go out of date, it belongs in
+> its source document instead. Deleting this entire directory must lose no information.
+
 ## Purpose
 
-A one-stop, at-a-glance orientation to what this project is, for an agent or person with no
-prior context.
+A pointer to where a reader finds what this project is and who it's for, without restating it
+here.
 
-## What This Project Is
+## Source of truth
 
-TODO: fill in once confirmed.
+`docs/governance/project-charter.md`, §1–§2; [`docs/01-project-plan.md`](../01-project-plan.md).
 
-## Who It's For
+## Vision & Mission
 
-TODO: fill in once confirmed.
+TODO: point to the exact charter section(s), not a restatement.
+
+## Target Users
+
+TODO: point to the exact project-plan section(s), not a restatement.
 
 ## Current Phase
 
-TODO: fill in once confirmed.
+TODO: point to wherever current phase is tracked, not a restatement.

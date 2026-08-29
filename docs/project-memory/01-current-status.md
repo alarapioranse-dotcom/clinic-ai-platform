@@ -1,21 +1,29 @@
 # Current Status
 
+> This file holds pointers, never facts. If a statement here could go out of date, it belongs in
+> its source document instead. Deleting this entire directory must lose no information.
+
 ## Purpose
 
-A current snapshot of where the project stands, kept up to date as work progresses.
+A pointer to where a reader checks the project's current state, without restating that state
+here — status changes too often to duplicate safely.
 
-## Current Phase
+## Source of truth
 
-TODO: fill in once confirmed.
+GitHub (branches, open pull requests, CI runs); Notion HQ.
 
-## Completed Deliverables
+## Open Pull Requests
 
-TODO: fill in once confirmed.
+TODO: point to the GitHub PR list view, not a restated list.
 
-## In Progress
+## CI Status
 
-TODO: fill in once confirmed.
+TODO: point to the GitHub Actions view, not a restated status.
 
-## Blocked / Waiting On
+## Active Branches
 
-TODO: fill in once confirmed.
+TODO: point to the GitHub branch list, not a restated list.
+
+## Notion HQ
+
+TODO: point to the Notion HQ page, not a restated summary.

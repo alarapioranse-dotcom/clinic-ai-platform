@@ -137,6 +137,10 @@ to these beyond what's stated as an explicit, flagged assumption in the relevant
    only specifies release behavior for rescheduling, not plain cancellation.
 8. If a Staff Member who sent a pending Invitation is deactivated before the invitee accepts, what
    happens to that Invitation?
+9. What verifies that the person in a Conversation is the Patient they claim to be? On WhatsApp
+   the channel verifies the PhoneNumber; on web chat (the first channel, P6) nothing does.
+   Booking, rescheduling and cancellation all act on Patient identity, so this must be answered
+   before P4.
 
 ## Relation to prior deliverables
 

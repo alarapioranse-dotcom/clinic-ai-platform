@@ -6,9 +6,9 @@ booked appointments instead of a human receptionist doing it manually.
 
 ## Status
 
-Deliverable B (P1-B domain model) merged via PR #4. Next up is Deliverable C —
-Technical Design (schema, API contracts, AI pipeline, auth implementation). Issue #7
-(data residency ADR) is open and blocks P2, not C. PR #6 stays draft.
+P1 is complete: Deliverables A (product), B (domain model), and C (technical design) are
+merged on main, and all eight ADRs (0001-0008) are Accepted. Issue #7 (data residency
+ADR) is open and blocks P2; PR #6 stays draft. Next: P2 implementation, gated on issue #7.
 
 ## Hard rules
 

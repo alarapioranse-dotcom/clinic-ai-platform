@@ -25,7 +25,7 @@ StaffMember and no flow needs to track credential history independently of the S
 
 A minimal `staff_sessions` table is introduced here — **this is infrastructure supporting an
 existing aggregate's sign-in, not a new domain entity**: B's StaffMember aggregate already implies
-"an authenticated person" exists, and B explicitly deferred *how* that authentication is realized
+"an authenticated person" exists, and B explicitly deferred _how_ that authentication is realized
 to this deliverable (see the exception carved out in
 [`00-overview.md`](./00-overview.md)).
 

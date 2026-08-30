@@ -56,7 +56,7 @@ runs, the row may no longer match `processing`.
 
 What Stage 3 (RETRIEVE) in [`05-ai-pipeline.md`](./05-ai-pipeline.md) needs is: **given a Clinic
 and a query, return the most relevant chunks of that Clinic's `Ready` KnowledgeDocuments, scoped by
-`clinic_id` like every other read in this system.** That requirement is fixed here. *Where* the
+`clinic_id` like every other read in this system.** That requirement is fixed here. _Where_ the
 chunk/embedding representation physically lives is not — it is Open Question 3 in
 [`07-open-questions.md`](./07-open-questions.md), between two candidate architectures:
 

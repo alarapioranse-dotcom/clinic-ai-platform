@@ -132,7 +132,7 @@ CREATE POLICY tenant_isolation ON staff_members
   ([`docs/domain/01-entities.md`](../domain/01-entities.md)): `NULL` means "clinic default
   applies," not "invalid" — there is deliberately no `NOT NULL` here.
 - "A Clinic must always have at least one Owner" (B, business rules) is **not** enforced by this
-  schema — it constrains a *deletion/deactivation* action, not a row's shape, and is enforced at
+  schema — it constrains a _deletion/deactivation_ action, not a row's shape, and is enforced at
   the API layer (see [`03-api-contracts.md`](./03-api-contracts.md)): the deactivate-staff endpoint
   rejects deactivating the last active `owner` for a clinic inside the same transaction that would
   perform it.
@@ -258,7 +258,7 @@ CREATE POLICY tenant_isolation ON conversations
   makes "a Conversation's Patient belongs to the same Clinic" a structural impossibility to violate
   rather than an application-code discipline: inserting a Conversation whose `clinic_id` doesn't
   match its Patient's `clinic_id` fails at the database, full stop.
-- "Always contains at least one Message" is a cross-table invariant about *when* a row becomes
+- "Always contains at least one Message" is a cross-table invariant about _when_ a row becomes
   valid, not about this table's own columns — see the deferred trigger under `messages`, below.
 
 ## `messages`
@@ -438,7 +438,7 @@ ALTER TABLE appointments ADD CONSTRAINT no_double_booking
   ) WHERE (status <> 'cancelled');
 ```
 
-- Three composite foreign keys, not one — B is explicit that Patient, Service, *and* practitioner
+- Three composite foreign keys, not one — B is explicit that Patient, Service, _and_ practitioner
   StaffMember must all match the Appointment's own Clinic; each reference is checked
   independently, structurally, rather than trusting that all three inputs happened to come from the
   same clinic context in application code.
@@ -451,7 +451,7 @@ ALTER TABLE appointments ADD CONSTRAINT no_double_booking
   work no application-level check could replace safely: two concurrent requests both attempting to
   book the same practitioner for overlapping times will, without this constraint, both pass an
   application-level "is this slot free?" check before either has committed. `EXCLUDE ... WHERE
-  (status <> 'cancelled')` rejects the second `INSERT`/`UPDATE` outright, atomically, which is
+(status <> 'cancelled')` rejects the second `INSERT`/`UPDATE` outright, atomically, which is
   exactly "rejected outright at creation or reschedule time, never merely flagged as a warning"
   (B, Appointment business rules) — a reschedule is modeled as `UPDATE` on `starts_at`/`ends_at`,
   and the same constraint covers it without separate logic.
@@ -462,7 +462,7 @@ ALTER TABLE appointments ADD CONSTRAINT no_double_booking
 - "A Cancelled or past Appointment cannot be rescheduled" (B, business rules) is enforced at the
   API layer, not here: it's a rule about which requests are accepted, not about what a stored row
   may look like (a cancelled Appointment's row is perfectly valid data; it's the reschedule
-  *action* that's refused). See [`03-api-contracts.md`](./03-api-contracts.md).
+  _action_ that's refused). See [`03-api-contracts.md`](./03-api-contracts.md).
 
 ## `knowledge_documents`
 
@@ -505,7 +505,7 @@ CREATE POLICY tenant_isolation ON knowledge_documents
   this one holding — a corrected file becomes a new row (B: "a corrected file is a new upload"),
   not an update path this schema needs to close off structurally.
 - "The Assistant may only draw on a document while Ready" is explicitly **not** this table's
-  invariant to enforce (B, KnowledgeDocument aggregate: "constrains how a *different* system — the
+  invariant to enforce (B, KnowledgeDocument aggregate: "constrains how a _different_ system — the
   AI pipeline — may consume this aggregate's state") — see
   [`05-ai-pipeline.md`](./05-ai-pipeline.md), which filters retrieval to `status = 'ready'` at query
   time.
@@ -518,7 +518,7 @@ CREATE POLICY tenant_isolation ON knowledge_documents
 
 Unlike every invariant above, "a Clinic's working hours and its service list are read and written
 as one consistent unit" (B, Clinic aggregate) is not a structural rule about what a row may
-contain — it's a rule about *when* a change becomes visible to a reader. It is enforced by
+contain — it's a rule about _when_ a change becomes visible to a reader. It is enforced by
 transaction boundary, not schema:
 
 ```sql

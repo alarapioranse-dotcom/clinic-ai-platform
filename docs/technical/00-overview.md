@@ -47,7 +47,7 @@ configuration changes.
   ([`03-value-objects.md`](../domain/03-value-objects.md)) become columns or embedded types, never
   their own tables. Two exceptions are addressed explicitly, not silently: auth needs some
   persisted session/credential structure, and Knowledge Document retrieval needs some persisted
-  representation of a document's content for similarity search. Neither is a new *domain* entity —
+  representation of a document's content for similarity search. Neither is a new _domain_ entity —
   B's own overview names "Authentication implementation (sessions, tokens, password hashing)" and
   "Storage details for Knowledge Documents (file storage, embeddings)" as exactly what it defers to
   C. They are infrastructure detail supporting an existing aggregate (StaffMember's sign-in;
@@ -78,14 +78,14 @@ later invalidate.
 Deliverable B's invariants are enforced by whichever mechanism actually guarantees them, not by
 convention:
 
-| Mechanism                    | Used for                                                                             |
-| ----------------------------- | -------------------------------------------------------------------------------------- |
-| `NOT NULL` / `CHECK` / `UNIQUE` (single table) | Simple structural rules (StaffMember's one Role, Message's one sender). |
-| Partial unique index          | "At most one Pending Invitation per (clinic, email)."                                  |
-| `EXCLUDE` constraint (GiST)   | Appointment no-double-booking — the one invariant that spans multiple rows of the same table and must be atomic. |
-| Trigger                       | Invariants spanning two tables that a `CHECK` constraint cannot see (Conversation/Escalation status agreement). |
-| Explicit transaction boundary | Invariants that are about *when* things become visible together, not a structural rule (Clinic's Service list + WorkingHours; Conversation's first Message). |
-| Row Level Security policy     | Tenant isolation itself (ADR-0003) — the one guarantee that must hold even if application code has a bug. |
+| Mechanism                                      | Used for                                                                                                                                                     |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `NOT NULL` / `CHECK` / `UNIQUE` (single table) | Simple structural rules (StaffMember's one Role, Message's one sender).                                                                                      |
+| Partial unique index                           | "At most one Pending Invitation per (clinic, email)."                                                                                                        |
+| `EXCLUDE` constraint (GiST)                    | Appointment no-double-booking — the one invariant that spans multiple rows of the same table and must be atomic.                                             |
+| Trigger                                        | Invariants spanning two tables that a `CHECK` constraint cannot see (Conversation/Escalation status agreement).                                              |
+| Explicit transaction boundary                  | Invariants that are about _when_ things become visible together, not a structural rule (Clinic's Service list + WorkingHours; Conversation's first Message). |
+| Row Level Security policy                      | Tenant isolation itself (ADR-0003) — the one guarantee that must hold even if application code has a bug.                                                    |
 
 Each is named again, against the specific invariant it protects, in
 [`01-database-schema.md`](./01-database-schema.md).
@@ -99,7 +99,7 @@ ADR-0003 already required, not amending either.
 
 One deliberate implementation choice, stated here because it's a genuine "how," not silently
 assumed: [`docs/domain/06-multi-tenancy.md`](../domain/06-multi-tenancy.md) describes Conversation
-and Appointment's tenant ownership as *transitive* (inherited through Patient) at the conceptual
+and Appointment's tenant ownership as _transitive_ (inherited through Patient) at the conceptual
 level. This deliverable gives every tenant-scoped table — Conversation, Message, Escalation, and
 Appointment included — its own physical `clinic_id` column rather than relying on a join through
 Patient at query time. This is not a contradiction of B: B describes what must be true
@@ -109,6 +109,6 @@ ADR-0003 is explicit that "any table holding data that belongs to a specific cli
 uniform RLS policy shape possible across all tenant-scoped tables (see
 [`01-database-schema.md`](./01-database-schema.md)), and matches ADR-0003's own stated
 consequence that application code benefits from `clinic_id` being present for index usage even
-where RLS is the actual safety net. Same-clinic *consistency* between an Appointment and the
+where RLS is the actual safety net. Same-clinic _consistency_ between an Appointment and the
 Patient/Service/StaffMember it references is then enforced structurally (composite foreign keys),
 not left to be re-derived by a join.

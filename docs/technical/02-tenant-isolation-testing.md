@@ -6,7 +6,7 @@ UI check that hides another clinic's data is not isolation" — and per
 [ADR-0003](../adr/0003-multi-tenancy-model.md), Row Level Security is the mechanism that makes that
 true. A test suite that never actually exercises RLS could pass indefinitely after a policy is
 accidentally dropped from a migration. This document specifies the shape that test must take so
-that it *cannot* pass that way.
+that it _cannot_ pass that way.
 
 **Illustrative only** — this is not a runnable file and nothing is added under `src/`. It is the
 specification P1's migration tooling and test setup must implement.

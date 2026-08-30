@@ -2,7 +2,8 @@
 
 ## Status
 
-Proposed
+Accepted — 2026-08-30. Approved by the owner in a comment on this pull
+request.
 
 ## Date
 

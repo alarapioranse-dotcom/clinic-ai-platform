@@ -2,9 +2,8 @@
 
 ## Status
 
-Proposed — not implemented in Phase 0, which has no database. This record
-exists now so P1 (see `docs/03-roadmap.md`) starts from an agreed model
-instead of designing it under pressure once data work begins.
+Accepted — 2026-08-30. Approved by the owner in a comment on this pull
+request.
 
 ## Context
 

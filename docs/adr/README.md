@@ -6,12 +6,13 @@ decisions don't need one.
 
 ## Index
 
-| ID                                        | Title                   | Status   |
-| ----------------------------------------- | ----------------------- | -------- |
-| [0001](./0001-web-stack.md)               | Web stack               | Accepted |
-| [0002](./0002-feature-slice-structure.md) | Feature-slice structure | Accepted |
-| [0003](./0003-multi-tenancy-model.md)     | Multi-tenancy model     | Proposed |
-| [0004](./0004-staff-role-model.md)        | Staff role model        | Proposed |
+| ID                                         | Title                    | Status   |
+| ------------------------------------------ | ------------------------ | -------- |
+| [0001](./0001-web-stack.md)                | Web stack                | Accepted |
+| [0002](./0002-feature-slice-structure.md)  | Feature-slice structure  | Accepted |
+| [0003](./0003-multi-tenancy-model.md)      | Multi-tenancy model      | Proposed |
+| [0004](./0004-staff-role-model.md)         | Staff role model         | Proposed |
+| [0005](./0005-patient-erasure-strategy.md) | Patient erasure strategy | Accepted |
 
 ## Template
 

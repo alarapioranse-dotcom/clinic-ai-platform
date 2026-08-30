@@ -14,6 +14,8 @@ before P5.
 
 ## 1. RLS tenant-context propagation mechanism
 
+Resolved by ADR-0006.
+
 **What's being decided:** how a request's `clinic_id` actually reaches PostgreSQL for the Row
 Level Security policies in [`01-database-schema.md`](./01-database-schema.md) to key on.
 
@@ -44,6 +46,8 @@ supports role granularity below the clinic level.
 
 ## 2. AI provider
 
+Resolved by ADR-0007.
+
 **What's being decided:** which LLM vendor(s) implement the `AssistantProvider` interface in
 [`05-ai-pipeline.md`](./05-ai-pipeline.md).
 
@@ -71,6 +75,8 @@ direct lever on that risk.
 ---
 
 ## 3. Embeddings storage
+
+Resolved by ADR-0008.
 
 **What's being decided:** where the retrieval-time chunk/embedding representation described in
 [`06-knowledge-document-storage.md`](./06-knowledge-document-storage.md) physically lives.

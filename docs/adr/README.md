@@ -6,17 +6,17 @@ decisions don't need one.
 
 ## Index
 
-| ID                                               | Title                          | Status   |
-| ------------------------------------------------ | ------------------------------ | -------- |
-| [0001](./0001-web-stack.md)                      | Web stack                      | Accepted |
-| [0002](./0002-feature-slice-structure.md)        | Feature-slice structure        | Accepted |
-| [0003](./0003-multi-tenancy-model.md)            | Multi-tenancy model            | Accepted |
-| [0004](./0004-staff-role-model.md)               | Staff role model               | Accepted |
-| [0005](./0005-patient-erasure-strategy.md)       | Patient erasure strategy       | Accepted |
-| [0006](./0006-rls-tenant-context-propagation.md) | RLS tenant-context propagation | Accepted |
-| [0007](./0007-ai-provider-constraints.md)        | AI provider constraints        | Accepted |
-| [0008](./0008-embeddings-storage.md)             | Embeddings storage             | Accepted |
-| [0009](./0009-data-residency.md) | Data residency and governing privacy regime | Proposed |
+| ID                                               | Title                                       | Status   |
+| ------------------------------------------------ | ------------------------------------------- | -------- |
+| [0001](./0001-web-stack.md)                      | Web stack                                   | Accepted |
+| [0002](./0002-feature-slice-structure.md)        | Feature-slice structure                     | Accepted |
+| [0003](./0003-multi-tenancy-model.md)            | Multi-tenancy model                         | Accepted |
+| [0004](./0004-staff-role-model.md)               | Staff role model                            | Accepted |
+| [0005](./0005-patient-erasure-strategy.md)       | Patient erasure strategy                    | Accepted |
+| [0006](./0006-rls-tenant-context-propagation.md) | RLS tenant-context propagation              | Accepted |
+| [0007](./0007-ai-provider-constraints.md)        | AI provider constraints                     | Accepted |
+| [0008](./0008-embeddings-storage.md)             | Embeddings storage                          | Accepted |
+| [0009](./0009-data-residency.md)                 | Data residency and governing privacy regime | Proposed |
 
 ## Template
 

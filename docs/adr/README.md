@@ -16,7 +16,7 @@ decisions don't need one.
 | [0006](./0006-rls-tenant-context-propagation.md) | RLS tenant-context propagation              | Accepted |
 | [0007](./0007-ai-provider-constraints.md)        | AI provider constraints                     | Accepted |
 | [0008](./0008-embeddings-storage.md)             | Embeddings storage                          | Accepted |
-| [0009](./0009-data-residency.md)                 | Data residency and governing privacy regime | Proposed |
+| [0009](./0009-data-residency.md)                 | Data residency and governing privacy regime | Accepted |
 
 ## Template
 

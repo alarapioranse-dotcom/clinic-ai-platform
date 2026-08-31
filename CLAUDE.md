@@ -7,8 +7,10 @@ booked appointments instead of a human receptionist doing it manually.
 ## Status
 
 P1 is complete: Deliverables A (product), B (domain model), and C (technical design) are
-merged on main, and all eight ADRs (0001-0008) are Accepted. Issue #7 (data residency
-ADR) is open and blocks P2; PR #6 stays draft. Next: P2 implementation, gated on issue #7.
+merged on main, and all eight ADRs (0001-0008) are Accepted. ADR-0009 (data residency
+and governing privacy regime) is Proposed and resolves issue #7: EU/EEA-only residency
+with GDPR as the sole governing regime, Gulf markets deferred. Next: P2 implementation,
+unblocked once ADR-0009 is Accepted and merged.
 
 ## Hard rules
 

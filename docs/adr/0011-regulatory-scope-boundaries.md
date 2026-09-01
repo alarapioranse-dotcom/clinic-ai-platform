@@ -19,12 +19,14 @@ classification.
 
 ### 1. Applicable regimes
 
-| Regime                                                | Our role                               | Note                                              |
-| ----------------------------------------------------- | -------------------------------------- | ------------------------------------------------- |
-| GDPR (EU) 2016/679                                    | Processor; the clinic is controller    | Art. 9 health data; Art. 28 DPA required (#17)    |
-| AI Act (EU) 2024/1689                                 | Provider of a non-high-risk AI system  | Art. 50(1) transparency duty applies now          |
-| ePrivacy + national cookie rules                      | Operator                               | Web chat widget and marketing site                |
-| Member State health-secrecy law (via GDPR Art. 9(4))  | Processor                              | e.g. §203 StGB in DE; open item                   |
+- **GDPR (EU) 2016/679.** We are processor; the clinic is controller. Art. 9
+  health data. Art. 28 DPA required (#17).
+- **AI Act (EU) 2024/1689.** We are provider of a non-high-risk AI system. The
+  Art. 50(1) transparency duty applies now.
+- **ePrivacy and national cookie rules.** We are operator of the web chat widget
+  and the marketing site.
+- **Member State health-secrecy law** via GDPR Art. 9(4), e.g. §203 StGB in
+  Germany. Open item.
 
 ### 1a. AI Act timeline (as of 2026-09-01)
 
@@ -88,7 +90,7 @@ MUST be enforced by a structural mechanism with a test:
   of intents: book, reschedule, cancel, hours, price, location, quote, escalate.
   Any output failing validation is discarded and replaced by the escalation
   response. No intent representing assessment, ranking, or advice may exist.
-- **E2 Verbatim-span check.** A `quote` response MUST be a contiguous span of a
+- **E2 Verbatim-span check.** A quote response MUST be a contiguous span of a
   clinic-authored source document, verified by exact match against the stored
   source, with the source id returned. Non-matching spans are blocked.
 - **E3 Pre-model input gate.** A deterministic detector routes symptom and

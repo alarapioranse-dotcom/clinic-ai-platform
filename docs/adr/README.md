@@ -17,6 +17,7 @@ decisions don't need one.
 | [0007](./0007-ai-provider-constraints.md)        | AI provider constraints                     | Accepted |
 | [0008](./0008-embeddings-storage.md)             | Embeddings storage                          | Accepted |
 | [0009](./0009-data-residency.md)                 | Data residency and governing privacy regime | Accepted |
+| [0011](./0011-regulatory-scope-boundaries.md)    | Regulatory scope boundaries                 | Proposed |
 
 ## Template
 

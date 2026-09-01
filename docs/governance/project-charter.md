@@ -7,8 +7,15 @@ repository conflicts with it, this charter governs until it is amended.
 
 ## 1. Vision
 
-Every clinic in the Arab world answers its patients in seconds, at any hour, without hiring a
+Every clinic answers its patients in seconds, at any hour, without hiring a
 second receptionist.
+
+This charter governs the EU/EEA product only. Under ADR-0009 the served market
+for P2-P9 is EU/EEA clinics, with GDPR as the sole governing privacy regime. A
+future Gulf-market product is intended as a separate system with its own charter,
+its own residency regime and its own ADR record — not as an expansion of this
+one. Nothing in this charter should be read as committing this codebase to serve
+both markets.
 
 ## 2. Mission
 
@@ -60,7 +67,9 @@ Practical how-to for all of the above lives in [`CONTRIBUTING.md`](../../CONTRIB
 
 - Patients are records in the system, not authenticated users of it.
 - Data collection is limited to what booking an appointment requires.
-- Data resides in the EU.
+- Data resides in the EU/EEA only, per ADR-0009. This covers primary Postgres,
+  replicas and backups, embeddings, transcripts, audit and application logs,
+  monitoring, and AI inference calls.
 - Patient health data is treated as GDPR Article 9 special category data, not ordinary personal
   data.
 - Retention and erasure are designed before the first clinic goes live, not retrofitted after.

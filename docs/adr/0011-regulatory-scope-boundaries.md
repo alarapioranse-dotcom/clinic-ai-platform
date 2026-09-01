@@ -1,6 +1,6 @@
 # ADR-0011: Regulatory Scope Boundaries
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-09-01
 - Deciders: Ahmed (owner)
 - Related: ADR-0005, ADR-0007, ADR-0009; charter §1 and §7; issues #16, #17

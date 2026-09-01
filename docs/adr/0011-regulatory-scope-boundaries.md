@@ -19,12 +19,12 @@ classification.
 
 ### 1. Applicable regimes
 
-| Regime | Our role | Note |
-|---|---|---|
-| GDPR (EU) 2016/679 | Processor; the clinic is controller | Art. 9 health data; Art. 28 DPA required (#17) |
-| AI Act (EU) 2024/1689 | Provider of a non-high-risk AI system | Art. 50(1) transparency duty applies now |
-| ePrivacy + national cookie rules | Operator | Web chat widget and marketing site |
-| Member State health-secrecy law (via GDPR Art. 9(4)) | Processor | e.g. §203 StGB in DE; open item |
+| Regime                                                | Our role                               | Note                                              |
+| ----------------------------------------------------- | -------------------------------------- | ------------------------------------------------- |
+| GDPR (EU) 2016/679                                    | Processor; the clinic is controller    | Art. 9 health data; Art. 28 DPA required (#17)    |
+| AI Act (EU) 2024/1689                                 | Provider of a non-high-risk AI system  | Art. 50(1) transparency duty applies now          |
+| ePrivacy + national cookie rules                      | Operator                               | Web chat widget and marketing site                |
+| Member State health-secrecy law (via GDPR Art. 9(4))  | Processor                              | e.g. §203 StGB in DE; open item                   |
 
 ### 1a. AI Act timeline (as of 2026-09-01)
 
@@ -101,4 +101,34 @@ MUST be enforced by a structural mechanism with a test:
 - **E5 CI boundary suite.** A red-team corpus of patient messages attempting to
   elicit triage, dosage, diagnosis, or urgency ranking MUST pass in CI. A failing
   case blocks merge.
-- **E6 Change control.** The
+- **E6 Change control.** The intent enum and the boundary policy files are under
+  CODEOWNERS. A diff touching them without an ADR reference fails CI.
+- **E7 Observability.** Every boundary-triggered escalation is counted as a
+  metric. A sustained rise is treated as a product-drift signal, not noise.
+
+E1-E4 are acceptance criteria for P5. E5-E7 ship with it, not after.
+
+## Consequences
+
+- P5 and P6 inherit hard acceptance criteria (B1-B6, E1-E7) rather than soft
+  guidance.
+- The knowledge-base ingestion path needs a content policy: clinic-authored
+  clinical material may be quoted but not paraphrased or summarised.
+- Marketing copy must never claim triage, screening, or symptom assessment; such
+  a claim alone can create a medical purpose under MDR.
+- Cost: the verification gate is a real pre-revenue expense and a schedule item.
+
+## Open questions
+
+- **Post-operative instructions.** Quoting clinic-authored aftercare text is the
+  sharpest edge of B2. Decide whether it is allowed at all, or only through a
+  labelled document-lookup response type.
+- **Art. 50(2) marking.** Whether machine-readable marking of synthetic content
+  extends to conversational text responses is contested. The Commission's
+  transparency guidelines and the associated code of practice are the reference.
+  Legacy-system relief (2 December 2026) does not apply: the system is not yet on
+  the market, so obligations attach at launch. Resolve before P5 ships.
+- **EHDS (EU) 2025/327.** Storing patient records may bring the platform under
+  the EHR-system chapter when it applies. Monitored, no action now.
+- **National health-secrecy obligations** for processors (Germany first) —
+  candidate follow-up alongside #17.

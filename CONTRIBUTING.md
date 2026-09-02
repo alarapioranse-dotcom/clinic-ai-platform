@@ -37,7 +37,7 @@ and `NEXT_PUBLIC_APP_ENV` are set — `src/lib/env.ts` throws if they're missing
 cp .env.example .env.local
 ```
 
-CI runs four checks; run them in this order before pushing:
+CI runs these checks; run them in this order before pushing:
 
 ```bash
 npm run build        # also normalizes tsconfig.json — run this first
@@ -45,7 +45,15 @@ npm run format        # if format:check below fails, this fixes it
 npm run format:check
 npm run lint
 npm run typecheck
+npm run db:migrate    # requires a local Postgres — see README.md "Database"
+npm test
 ```
+
+The last two need `DATABASE_URL` and `APP_DATABASE_URL` set in `.env.local` and a local
+PostgreSQL 16+ instance running — see [`README.md`](./README.md#database-p1-foundation). RLS
+cannot be meaningfully tested against a mocked database, per
+[`docs/technical/02-tenant-isolation-testing.md`](./docs/technical/02-tenant-isolation-testing.md),
+so these are real integration tests, not unit tests.
 
 ## Stack
 

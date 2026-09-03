@@ -26,7 +26,7 @@ async function main(): Promise<void> {
   // NEXT_PUBLIC_* checks) before dotenv has populated process.env from
   // .env.local. Relative path, not the `@/*` alias: this script runs
   // standalone via `tsx`, outside Next.js's own module resolution.
-  const { getDatabaseUrl } = await import('../src/lib/env');
+  const { getDatabaseUrl, getAppUserPassword } = await import('../src/lib/env');
   const client = new Client({ connectionString: getDatabaseUrl() });
   await client.connect();
 
@@ -55,6 +55,31 @@ async function main(): Promise<void> {
       await client.query('BEGIN');
       try {
         await client.query(sql);
+        if (file === '0002_app_role.sql') {
+          // Never embedded in the SQL file itself (PR #25 review): a
+          // committed migration runs in every environment, including a
+          // real deployment, so a hardcoded password would be a published
+          // credential. `ALTER ROLE` is a utility statement and Postgres
+          // doesn't accept a `$1` bind parameter there directly, so the
+          // password instead flows in via a genuine bind parameter to
+          // `set_config` (an ordinary function call, which does support
+          // parameters), then `format(..., %L)` safely quotes it as a SQL
+          // literal for `EXECUTE` inside a DO block — our own code never
+          // concatenates the password into SQL text.
+          await client.query("SELECT set_config('migration.app_user_password', $1, true)", [
+            getAppUserPassword(),
+          ]);
+          await client.query(`
+            DO $do$
+            BEGIN
+              EXECUTE format(
+                'ALTER ROLE app_user WITH PASSWORD %L',
+                current_setting('migration.app_user_password')
+              );
+            END
+            $do$;
+          `);
+        }
         await client.query('INSERT INTO schema_migrations (id) VALUES ($1)', [file]);
         await client.query('COMMIT');
         appliedCount += 1;

@@ -35,6 +35,9 @@ jobs:
       # This password is a CI/local development placeholder only (charter
       # §5: secrets live only in the deployment environment, never here).
       APP_DATABASE_URL: postgres://app_user:app_user_dev_password@localhost:5432/clinic_ai_platform
+      # Set via a parameterized statement by scripts/migrate.ts, never
+      # embedded in a migration file — must match the password above.
+      APP_USER_PASSWORD: app_user_dev_password
     steps:
       - uses: actions/checkout@v4
 

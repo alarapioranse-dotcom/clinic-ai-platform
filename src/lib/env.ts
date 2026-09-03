@@ -54,3 +54,24 @@ export function getDatabaseUrl(): string {
 export function getAppDatabaseUrl(): string {
   return requireEnv('APP_DATABASE_URL');
 }
+
+/**
+ * The app_user role's password, used only by scripts/migrate.ts to set it
+ * via a parameterized `ALTER ROLE ... WITH PASSWORD $1` (PR #25 review) —
+ * never read by the running application, and never written into a
+ * migration's SQL text. Must match the password embedded in
+ * APP_DATABASE_URL.
+ */
+export function getAppUserPassword(): string {
+  return requireEnv('APP_USER_PASSWORD');
+}
+
+/**
+ * Whether this process is running under the test suite (Vitest sets
+ * `NODE_ENV=test` automatically). Used only to gate
+ * `src/lib/db.ts`'s `withoutTenantContext` against accidental production
+ * use (PR #25 review) — not a general-purpose environment check.
+ */
+export function isTestEnvironment(): boolean {
+  return process.env.NODE_ENV === 'test';
+}

@@ -49,11 +49,18 @@ npm run db:migrate    # requires a local Postgres — see README.md "Database"
 npm test
 ```
 
-The last two need `DATABASE_URL` and `APP_DATABASE_URL` set in `.env.local` and a local
-PostgreSQL 16+ instance running — see [`README.md`](./README.md#database-p1-foundation). RLS
-cannot be meaningfully tested against a mocked database, per
+The last two need `DATABASE_URL`, `APP_DATABASE_URL`, and `APP_USER_PASSWORD` set in `.env.local`
+and a local PostgreSQL 16+ instance running — see
+[`README.md`](./README.md#database-p1-foundation). RLS cannot be meaningfully tested against a
+mocked database, per
 [`docs/technical/02-tenant-isolation-testing.md`](./docs/technical/02-tenant-isolation-testing.md),
 so these are real integration tests, not unit tests.
+
+**`FORCE ROW LEVEL SECURITY` applies to the migration/owner role too**, not only `app_user` (see
+`db/migrations/0004_patients.sql`). A future migration that backfills or bulk-updates data in
+`patients` runs as that same owner role and will silently affect zero rows unless it sets
+`app.current_clinic_id` per tenant (or explicitly runs as a role with `BYPASSRLS`) — it will not
+fail loudly, so this is easy to miss without knowing to look for it.
 
 ## Stack
 

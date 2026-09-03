@@ -1,5 +1,5 @@
 import { Pool, type PoolClient } from 'pg';
-import { getAppDatabaseUrl } from '@/lib/env';
+import { getAppDatabaseUrl, isTestEnvironment } from '@/lib/env';
 
 /**
  * Tenant-context propagation, per ADR-0006 ("RLS tenant-context
@@ -52,12 +52,22 @@ export async function withTenantContext<T>(
     await client.query("SELECT set_config('app.current_clinic_id', $1, true)", [clinicId]);
     const result = await fn(client);
     await client.query('COMMIT');
+    client.release();
     return result;
   } catch (err) {
-    await client.query('ROLLBACK');
+    // PR #25 review: if ROLLBACK itself throws, the connection may still be
+    // inside a transaction carrying this request's tenant context — never
+    // let that go back into the pool for a later, unrelated request to
+    // reuse. release(err) tells pg to destroy the connection instead of
+    // pooling it. Either way, the *original* error is what's re-thrown, not
+    // a rollback failure masking it.
+    try {
+      await client.query('ROLLBACK');
+      client.release();
+    } catch (rollbackErr) {
+      client.release(rollbackErr instanceof Error ? rollbackErr : new Error(String(rollbackErr)));
+    }
     throw err;
-  } finally {
-    client.release();
   }
 }
 
@@ -66,9 +76,21 @@ export async function withTenantContext<T>(
  * no tenant context set. This exists only for the isolation test suite: it
  * is the "query path that opens no transaction" ADR-0006 requires a test
  * case for (docs/technical/02-tenant-isolation-testing.md, "What this must
- * become in CI" section) — application code must never call this directly.
+ * become in CI" section).
+ *
+ * Application code must never call this directly — and per PR #25 review,
+ * that is enforced here, not left as a comment: it throws outside a test
+ * run (per ADR-0011 §6, a boundary "not satisfied by prompt instructions...
+ * enforced by a structural mechanism with a test"). Vitest sets
+ * `NODE_ENV=test` automatically, so the test suite is unaffected.
  */
 export async function withoutTenantContext<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
+  if (!isTestEnvironment()) {
+    throw new Error(
+      'withoutTenantContext must never be called outside the test suite — it exists only to prove RLS fails closed with no tenant context (see docs/technical/02-tenant-isolation-testing.md).',
+    );
+  }
+
   const client = await getPool().connect();
   try {
     return await fn(client);

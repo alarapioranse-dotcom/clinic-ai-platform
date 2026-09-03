@@ -95,7 +95,8 @@ docker run --name clinic-ai-postgres -e POSTGRES_PASSWORD=postgres -p 5432:5432 
 docker exec clinic-ai-postgres psql -U postgres -c "CREATE DATABASE clinic_ai_platform;"
 ```
 
-Then, with `DATABASE_URL` and `APP_DATABASE_URL` set in `.env.local` (see below):
+Then, with `DATABASE_URL`, `APP_DATABASE_URL`, and `APP_USER_PASSWORD` set in `.env.local` (see
+below):
 
 ```bash
 npm run db:migrate
@@ -125,12 +126,13 @@ it to a gitignored `.env.local`:
 cp .env.example .env.local
 ```
 
-| Variable              | Required                      | Description                                                |
-| --------------------- | ----------------------------- | ---------------------------------------------------------- |
-| `NEXT_PUBLIC_APP_URL` | Yes                           | Public base URL of the deployed app.                       |
-| `NEXT_PUBLIC_APP_ENV` | Yes                           | One of `development` \| `staging` \| `production`.         |
-| `DATABASE_URL`        | Only for `db:migrate`         | Owner/migration connection. Never used by the running app. |
-| `APP_DATABASE_URL`    | Only for DB-backed code/tests | Least-privilege runtime connection — see "Database" above. |
+| Variable              | Required                      | Description                                                                                                                                  |
+| --------------------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_APP_URL` | Yes                           | Public base URL of the deployed app.                                                                                                         |
+| `NEXT_PUBLIC_APP_ENV` | Yes                           | One of `development` \| `staging` \| `production`.                                                                                           |
+| `DATABASE_URL`        | Only for `db:migrate`         | Owner/migration connection. Never used by the running app.                                                                                   |
+| `APP_DATABASE_URL`    | Only for DB-backed code/tests | Least-privilege runtime connection — see "Database" above.                                                                                   |
+| `APP_USER_PASSWORD`   | Only for `db:migrate`         | Sets `app_user`'s password via a parameterized statement; never embedded in a migration file. Must match the password in `APP_DATABASE_URL`. |
 
 ## Deployment
 

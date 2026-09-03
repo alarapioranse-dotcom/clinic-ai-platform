@@ -6,7 +6,10 @@ staff authentication are now real code, not documentation.
 
 - PR #25 (P1 Postgres + RLS tenant isolation) → merged as 2e0875c
 - PR #29 (P2a staff auth + sessions) → merged as 6a8a95b
-- Both branches deleted. CI green on main.
+- PR #30 (regression tests for the ROLLBACK failure path) → merged
+- All branches deleted. CI green on main.
+- PR #6 (docs/project-memory templates) closed as superseded by this file.
+- docs/STATUS.md is in .prettierignore — it is hand-edited from the browser.
 
 ChatGPT is no longer available (free tier exhausted), so it no longer acts
 as architect/challenger. That role now falls to Claude in chat. Claude Code
@@ -51,28 +54,23 @@ From P2a (PR #29):
    GRANT SELECT (id, name, status, working_hours) ON clinics TO app_user.
    GRANT INSERT also lets the runtime role create tenants, which is an
    administrative operation.
-2. src/lib/db.ts: if ROLLBACK itself throws, the original error is swallowed
-   and client.release() is called with no argument, returning a possibly
-   broken connection still holding an open transaction and its tenant
-   context. Wrap the ROLLBACK, pass client.release(err).
-3. src/lib/db.ts: withoutTenantContext is exported from production code with
-   only a comment forbidding its use. Documentation, not a mechanism — the
-   same gap ADR-0011 E6 exists to close. Move to test support or guard on
-   NODE_ENV.
-4. ADR-0006's mandatory pooler CI check is implemented as a code-level
+2. ADR-0006's mandatory pooler CI check is implemented as a code-level
    guard, not a real pooler-config check. The ADR condition is NOT met.
-5. 3 pre-existing high-severity npm audit advisories in next's transitive
+3. 3 pre-existing high-severity npm audit advisories in next's transitive
    postcss/sharp deps.
-6. No dedicated sign-in page yet — the (app) guard redirects to /.
-7. 0003_clinics.sql: comment describes clinics_id_key UNIQUE (id) as a
+4. No dedicated sign-in page yet — the (app) guard redirects to /.
+5. 0003_clinics.sql: comment describes clinics_id_key UNIQUE (id) as a
    composite FK target, but it is single-column and redundant given the PK.
-8. Operational, for the hosting decision record: app_user's password is
+6. Operational, for the hosting decision record: app_user's password is
    visible in pg_stat_activity while migrate runs, and would be captured
    under log_statement='all'.
-9. CLAUDE.md stale lines: ADR-0009 listed as Proposed (it is Accepted); the
+7. CLAUDE.md stale lines: ADR-0009 listed as Proposed (it is Accepted); the
    P1-complete claim is now actually true post-merge but was written when it
    covered docs only.
-10. README.md phase table doesn't match docs/03-roadmap.md.
+
+Closed during the 2026-09-04 session: old 2 and 3 (db.ts ROLLBACK and
+withoutTenantContext) were already fixed in #29; old 10 (README phase table)
+is fixed.
 
 ## Roadmap (docs/03-roadmap.md is authoritative, P0-P5 only)
 - P0 Foundation — done

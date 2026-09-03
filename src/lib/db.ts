@@ -99,6 +99,71 @@ export async function withoutTenantContext<T>(fn: (client: PoolClient) => Promis
   }
 }
 
+/**
+ * The two authentication-bootstrap lookups from ADR-0012
+ * (docs/adr/0012-authentication-bootstrap-security-definer.md, human-approved):
+ * each calls exactly one `SECURITY DEFINER` PostgreSQL function
+ * (`auth_lookup_staff_by_email` / `auth_lookup_session_by_token_hash`,
+ * db/migrations/0007_auth_bootstrap_functions.sql) that runs before
+ * `app.current_clinic_id` can be known — sign-in and session validation
+ * both need to resolve *which* clinic a request belongs to before that
+ * setting can exist.
+ *
+ * These two functions are the only production-safe way to read
+ * `staff_members` or `staff_sessions` pre-tenant-context. Deliberately two
+ * fixed, named functions — each with a single typed scalar argument and a
+ * hardcoded query calling one whitelisted database function — rather than a
+ * general-purpose "run any query without tenant context" helper; that role
+ * is, and remains, `withoutTenantContext()`'s test-only one. Application
+ * code outside `src/features/auth/**` has no reason to call either of
+ * these.
+ */
+export interface AuthBootstrapStaffRow {
+  staff_id: string;
+  clinic_id: string;
+  role: string;
+  status: string;
+  password_hash: string;
+}
+
+export async function lookupStaffByEmailForAuth(
+  email: string,
+): Promise<AuthBootstrapStaffRow | null> {
+  const client = await getPool().connect();
+  try {
+    const { rows } = await client.query<AuthBootstrapStaffRow>(
+      'SELECT * FROM auth_lookup_staff_by_email($1)',
+      [email],
+    );
+    return rows[0] ?? null;
+  } finally {
+    client.release();
+  }
+}
+
+export interface AuthBootstrapSessionRow {
+  session_id: string;
+  staff_id: string;
+  clinic_id: string;
+  role: string;
+  status: string;
+}
+
+export async function lookupSessionByTokenHashForAuth(
+  tokenHash: string,
+): Promise<AuthBootstrapSessionRow | null> {
+  const client = await getPool().connect();
+  try {
+    const { rows } = await client.query<AuthBootstrapSessionRow>(
+      'SELECT * FROM auth_lookup_session_by_token_hash($1)',
+      [tokenHash],
+    );
+    return rows[0] ?? null;
+  } finally {
+    client.release();
+  }
+}
+
 export async function closePool(): Promise<void> {
   await pool?.end();
   pool = undefined;

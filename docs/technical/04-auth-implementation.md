@@ -17,6 +17,17 @@ reversible implementation detail — swapping hash algorithms later is a per-row
 migration, not a one-way door — so it's stated directly here rather than deferred to
 [`07-open-questions.md`](./07-open-questions.md).
 
+**Pinned (P2-A):** the [`argon2`](https://www.npmjs.com/package/argon2) package (node-argon2),
+called with `type: argon2id, memoryCost: 19456 (19 MiB), timeCost: 2, parallelism: 1` — OWASP's
+first-listed Argon2id configuration, the memory-optimized default. The encoded hash string produced
+by `argon2.hash()` embeds its own algorithm/version/params/salt, so `argon2.verify()` needs no
+separately stored parameters.
+
+**Timing side-channel mitigation:** when `auth_lookup_staff_by_email` (see below) returns no row,
+sign-in still runs `argon2.verify()` against a fixed constant dummy Argon2id hash before returning
+`401`, so an unknown email and a wrong password take comparably long — the response never reveals
+which case occurred through timing alone.
+
 `password_hash` lives on `staff_members` directly (an attribute of an existing entity, not a new
 one) rather than on a separate `credentials` table — there is exactly one credential per
 StaffMember and no flow needs to track credential history independently of the StaffMember itself.
@@ -55,22 +66,42 @@ CREATE POLICY tenant_isolation ON staff_sessions
 - `revoked_at` supports sign-out and staff deactivation invalidating outstanding sessions
   immediately, rather than waiting for natural expiry.
 
+**Pinned (P2-A):** the raw token is 32 random bytes, base64url-encoded, generated at sign-in.
+`token_hash` is the SHA-256 hex digest of that raw token — the raw token itself is never persisted
+anywhere. Session lifetime is a fixed 7 days from creation (`expires_at = created_at + 7 days`),
+enforced on every lookup (not only at creation) by `auth_lookup_session_by_token_hash` excluding
+expired and revoked rows directly in its query. The session cookie is named `session`, with
+`HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=604800`.
+
 ## Sign-in flow
 
 ```text
 POST /api/auth/sign-in { email, password }
-  1. SELECT staff_members WHERE email = :email  -- must run without an app.current_clinic_id
-     context yet, since the caller hasn't proven which clinic they belong to — see the note
-     on clinics having no RLS policy in 01-database-schema.md; staff_members DOES have one,
-     so this lookup runs through a narrowly-scoped path that bypasses RLS deliberately for
-     this one query (e.g., a SECURITY DEFINER function), not by disabling RLS generally.
-  2. If no row, or password_hash doesn't verify: 401, generic message (03-api-contracts.md).
-  3. If staff_members.status = 'deactivated': 401, same generic message (does not confirm to
-     the caller that the account exists but is deactivated).
-  4. Generate an opaque token, store its hash in staff_sessions, set it as an HttpOnly,
-     Secure, SameSite=Lax cookie.
-  5. 200, body: { staffId, clinicId, role }.
+  1. auth_lookup_staff_by_email(:email) -- a SECURITY DEFINER function (docs/adr/0012-authentication
+     -bootstrap-security-definer.md), the narrowly-scoped path that deliberately bypasses RLS for
+     this one lookup, since the caller hasn't proven which clinic they belong to yet and no
+     app.current_clinic_id context can exist before this resolves it. Not a general RLS bypass —
+     see ADR-0012 for exactly what it may return and how its privilege is restricted.
+  2. If no row: run argon2.verify() against a fixed dummy hash anyway (timing side-channel
+     mitigation, see above), then 401, generic message (03-api-contracts.md).
+  3. If password_hash doesn't verify: 401, same generic message.
+  4. If staff_members.status = 'deactivated': 401, same generic message (does not confirm to
+     the caller that the account exists but is deactivated) -- checked only after password
+     verification, so a wrong password and a deactivated account are indistinguishable.
+  5. Generate an opaque token (32 random bytes, base64url), compute its SHA-256 hash, and
+     INSERT INTO staff_sessions through withTenantContext(clinicId, ...) now that clinicId is
+     known from step 1 -- an ordinary tenant-scoped write, not part of the bootstrap bypass.
+     Set the token as the `session` cookie: HttpOnly, Secure, SameSite=Lax, Path=/, Max-Age=604800.
+  6. 200, body: { staffId, clinicId, role }.
 ```
+
+Every subsequent authenticated request (`GET /api/auth/session`, `POST /api/auth/sign-out`, and the
+`(app)` shell's guard) resolves its session the same bootstrapped way:
+`auth_lookup_session_by_token_hash(sha256(cookie))` — the second SECURITY DEFINER function in
+ADR-0012, which only returns a row for a currently-valid (non-expired, non-revoked) session. Once
+`clinicId` is resolved from that row, every further operation in the request uses
+`withTenantContext(clinicId, fn)` exactly as the sign-in flow's step 5 does — the bootstrap functions
+are used once per request, at the very start, never for the request's actual data access.
 
 ## Invitation acceptance flow
 

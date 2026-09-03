@@ -115,7 +115,7 @@ CREATE TABLE staff_members (
   created_at       timestamptz NOT NULL DEFAULT now(),
 
   CONSTRAINT staff_members_id_key UNIQUE (id, clinic_id),
-  CONSTRAINT staff_members_email_per_clinic UNIQUE (clinic_id, email)
+  CONSTRAINT staff_members_email_key UNIQUE (email) -- global, not per-clinic; see note below
 );
 
 ALTER TABLE staff_members ENABLE ROW LEVEL SECURITY;
@@ -139,6 +139,11 @@ CREATE POLICY tenant_isolation ON staff_members
 - Credential storage (password hash, sessions) is **not** on this table — see
   [`04-auth-implementation.md`](./04-auth-implementation.md) for why that's kept separate and what
   it looks like.
+- `staff_members_email_key` is a **global** `UNIQUE (email)`, not `UNIQUE (clinic_id, email)` —
+  amended by [ADR-0012](../adr/0012-authentication-bootstrap-security-definer.md) (Decision 1,
+  human-approved). The documented sign-in flow below resolves `{ email, password }` alone, with no
+  clinic selector anywhere in the product; a per-clinic-only constraint would let the same email
+  exist at two different clinics and make that lookup ambiguous.
 
 ## `invitations`
 

@@ -5,14 +5,12 @@ knowledge base. See `docs/` for the full plan.
 
 ## Status
 
-| Phase | Name                             | Status                                                                                     |
-| ----- | -------------------------------- | ------------------------------------------------------------------------------------------ |
-| P0    | Foundation                       | ✅ Done                                                                                    |
-| P1    | Multi-tenancy and data           | 🔧 Data layer + RLS + `patients` feature implemented (this PR); pending human review/merge |
-| P2    | Authentication and authorization | ⏳ Planned — blocked on P1 merging (needs the same tenant-context mechanism)               |
-| P3    | Conversations (patient replies)  | ⏳ Planned                                                                                 |
-| P4    | Appointments                     | ⏳ Planned                                                                                 |
-| P5    | Knowledge base and AI            | ⏳ Planned                                                                                 |
+- **P0 — Foundation:** Done
+- **P1 — Multi-tenancy and data:** Done (2e0875c)
+- **P2 — Authentication and authorization:** P2a staff auth done (6a8a95b); roles and permissions per ADR-0004 still to do
+- **P3 — Conversations:** Planned
+- **P4 — Appointments:** Planned
+- **P5 — Knowledge base and AI:** Planned
 
 Details and acceptance criteria per phase: [`docs/03-roadmap.md`](./docs/03-roadmap.md).
 

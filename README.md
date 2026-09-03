@@ -1,19 +1,18 @@
 # Clinic AI Platform
 
 A multi-tenant SaaS for medical clinics: patient replies, appointment booking, and a per-clinic
-knowledge base. This repository is currently at **Phase 0 — foundation only**: no database, no
-authentication, no AI, no payments. See `docs/` for the full plan.
+knowledge base. See `docs/` for the full plan.
 
 ## Status
 
-| Phase | Name                             | Status     |
-| ----- | -------------------------------- | ---------- |
-| P0    | Foundation                       | ✅ Done    |
-| P1    | Multi-tenancy and data           | ⏳ Planned |
-| P2    | Authentication and authorization | ⏳ Planned |
-| P3    | Conversations (patient replies)  | ⏳ Planned |
-| P4    | Appointments                     | ⏳ Planned |
-| P5    | Knowledge base and AI            | ⏳ Planned |
+| Phase | Name                             | Status                                                                                     |
+| ----- | -------------------------------- | ------------------------------------------------------------------------------------------ |
+| P0    | Foundation                       | ✅ Done                                                                                    |
+| P1    | Multi-tenancy and data           | 🔧 Data layer + RLS + `patients` feature implemented (this PR); pending human review/merge |
+| P2    | Authentication and authorization | ⏳ Planned — blocked on P1 merging (needs the same tenant-context mechanism)               |
+| P3    | Conversations (patient replies)  | ⏳ Planned                                                                                 |
+| P4    | Appointments                     | ⏳ Planned                                                                                 |
+| P5    | Knowledge base and AI            | ⏳ Planned                                                                                 |
 
 Details and acceptance criteria per phase: [`docs/03-roadmap.md`](./docs/03-roadmap.md).
 
@@ -56,26 +55,66 @@ src/
     marketing/          # landing page sections
     app/                # signed-in shell chrome
   features/
-    appointments/ patients/ knowledge-base/ conversations/   # README only
+    appointments/ knowledge-base/ conversations/   # README only
+    patients/  # real: repository.ts (internal) + index.ts (public entry point)
   config/
     site.ts, navigation.ts
   lib/
-    env.ts, utils.ts
+    env.ts, utils.ts, db.ts   # db.ts: tenant-context propagation (ADR-0006)
   types/
     index.ts
+db/
+  migrations/   # plain numbered SQL files, applied by scripts/migrate.ts
+scripts/
+  migrate.ts, verify-isolation-meaningful.ts
+tests/
+  db/   # tenant-isolation and pooler-configuration guard tests (vitest)
 ```
 
 ## Scripts
 
-| Script                 | Description                                  |
-| ---------------------- | -------------------------------------------- |
-| `npm run dev`          | Start the dev server.                        |
-| `npm run build`        | Production build.                            |
-| `npm run start`        | Start the production server (after `build`). |
-| `npm run lint`         | Run ESLint (`eslint .`).                     |
-| `npm run format`       | Format the repo with Prettier.               |
-| `npm run format:check` | Check formatting without writing.            |
-| `npm run typecheck`    | Run `tsc --noEmit`.                          |
+| Script                                   | Description                                                         |
+| ---------------------------------------- | ------------------------------------------------------------------- |
+| `npm run dev`                            | Start the dev server.                                               |
+| `npm run build`                          | Production build.                                                   |
+| `npm run start`                          | Start the production server (after `build`).                        |
+| `npm run lint`                           | Run ESLint (`eslint .`).                                            |
+| `npm run format`                         | Format the repo with Prettier.                                      |
+| `npm run format:check`                   | Check formatting without writing.                                   |
+| `npm run typecheck`                      | Run `tsc --noEmit`.                                                 |
+| `npm run db:migrate`                     | Apply pending SQL migrations in `db/migrations/`.                   |
+| `npm test`                               | Run the automated test suite (requires migrations already applied). |
+| `npm run db:verify-isolation-meaningful` | One-time manual check (not CI) — see the script's own comment.      |
+
+## Database (P1 foundation)
+
+Requires a local PostgreSQL 16+ instance. Any way of getting one works, e.g.:
+
+```bash
+docker run --name clinic-ai-postgres -e POSTGRES_PASSWORD=postgres -p 5432:5432 -d postgres:16
+docker exec clinic-ai-postgres psql -U postgres -c "CREATE DATABASE clinic_ai_platform;"
+```
+
+Then, with `DATABASE_URL`, `APP_DATABASE_URL`, and `APP_USER_PASSWORD` set in `.env.local` (see
+below):
+
+```bash
+npm run db:migrate
+npm test
+```
+
+**Tenant context mechanism** (ADR-0006): every read/write to a tenant-scoped table runs inside a
+transaction that calls `SELECT set_config('app.current_clinic_id', <clinicId>, true)` before any
+query — see `src/lib/db.ts`'s `withTenantContext`. This is the parameterized equivalent of
+`SET LOCAL app.current_clinic_id`: transaction-scoped, never leaks onto a pooled connection handed
+to a later request.
+
+**Row Level Security is the actual isolation boundary, not application code** (charter §5). Every
+tenant-scoped table has a `tenant_isolation` RLS policy keyed on that session variable, and denies
+all rows when it's unset — application code never adds its own `WHERE clinic_id = ...` filter as a
+substitute. The application connects as a least-privilege `app_user` role, never as the
+table-owning role migrations run as (`db/migrations/0002_app_role.sql`) — RLS is not a meaningful
+guarantee against a connection that owns the tables it protects.
 
 ## Environment variables
 
@@ -87,18 +126,22 @@ it to a gitignored `.env.local`:
 cp .env.example .env.local
 ```
 
-| Variable              | Required | Description                                        |
-| --------------------- | -------- | -------------------------------------------------- |
-| `NEXT_PUBLIC_APP_URL` | Yes      | Public base URL of the deployed app.               |
-| `NEXT_PUBLIC_APP_ENV` | Yes      | One of `development` \| `staging` \| `production`. |
+| Variable              | Required                      | Description                                                                                                                                  |
+| --------------------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_APP_URL` | Yes                           | Public base URL of the deployed app.                                                                                                         |
+| `NEXT_PUBLIC_APP_ENV` | Yes                           | One of `development` \| `staging` \| `production`.                                                                                           |
+| `DATABASE_URL`        | Only for `db:migrate`         | Owner/migration connection. Never used by the running app.                                                                                   |
+| `APP_DATABASE_URL`    | Only for DB-backed code/tests | Least-privilege runtime connection — see "Database" above.                                                                                   |
+| `APP_USER_PASSWORD`   | Only for `db:migrate`         | Sets `app_user`'s password via a parameterized statement; never embedded in a migration file. Must match the password in `APP_DATABASE_URL`. |
 
 ## Deployment
 
-Phase 0 has no infrastructure of its own — it's a static-friendly Next.js app suited to a
-Vercel-style deployment (or any Node 22 host that can run `npm run build` followed by
-`npm run start`). Set `NEXT_PUBLIC_APP_URL` and `NEXT_PUBLIC_APP_ENV` for the target environment;
-there are no other required variables until later phases add a database, auth, and AI provider
-configuration.
+Set `NEXT_PUBLIC_APP_URL` and `NEXT_PUBLIC_APP_ENV` for the target environment. As of this PR, a
+deployment that uses the `patients` feature also needs `DATABASE_URL` (to run migrations) and
+`APP_DATABASE_URL` (for the app itself) pointed at an EU/EEA-region PostgreSQL instance per
+ADR-0009 — no vendor is chosen by this repository (see the PR description for why "Supabase" is
+not assumed as-is). Authentication, and therefore the rest of the signed-in app, is not yet
+implemented (P2, not started).
 
 ## Contributing
 

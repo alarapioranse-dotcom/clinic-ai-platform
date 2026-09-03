@@ -13,22 +13,30 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "db:migrate": "tsx scripts/migrate.ts",
+    "db:verify-isolation-meaningful": "tsx scripts/verify-isolation-meaningful.ts",
+    "test": "vitest run"
   },
   "dependencies": {
     "next": "16.2.12",
+    "pg": "8.23.0",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",
+    "@types/pg": "8.23.1",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.4",
     "@tailwindcss/postcss": "4.3.3",
+    "dotenv": "17.4.2",
     "eslint": "9.39.5",
     "eslint-config-next": "16.2.12",
     "prettier": "3.9.6",
     "tailwindcss": "4.3.3",
-    "typescript": "5.7.3"
+    "tsx": "4.23.13",
+    "typescript": "5.7.3",
+    "vitest": "4.1.11"
   }
 }

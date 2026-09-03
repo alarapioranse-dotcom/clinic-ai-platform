@@ -8,6 +8,36 @@ on:
 jobs:
   checks:
     runs-on: ubuntu-latest
+    # PostgreSQL for the P1 tenant-isolation slice (ADR-0006). RLS cannot be
+    # meaningfully tested against an in-memory or mocked database — see
+    # docs/technical/02-tenant-isolation-testing.md.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: clinic_ai_platform
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      NEXT_PUBLIC_APP_ENV: development
+      # Owner/migration connection. See db/migrations/0002_app_role.sql for
+      # why the application itself never uses this one.
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/clinic_ai_platform
+      # Least-privilege runtime connection created by 0002_app_role.sql.
+      # This password is a CI/local development placeholder only (charter
+      # §5: secrets live only in the deployment environment, never here).
+      APP_DATABASE_URL: postgres://app_user:app_user_dev_password@localhost:5432/clinic_ai_platform
+      # Set via a parameterized statement by scripts/migrate.ts, never
+      # embedded in a migration file — must match the password above.
+      APP_USER_PASSWORD: app_user_dev_password
     steps:
       - uses: actions/checkout@v4
 
@@ -33,3 +63,9 @@ jobs:
         env:
           NEXT_PUBLIC_APP_URL: https://example.com
           NEXT_PUBLIC_APP_ENV: production
+
+      - name: Run database migrations
+        run: npm run db:migrate
+
+      - name: Tenant-isolation and pooler-configuration test suite
+        run: npm test

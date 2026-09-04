@@ -34,6 +34,43 @@ export interface AuthenticatedSession {
   role: string;
 }
 
+/** The four roles from ADR-0004 — mirrors `staff_members.role`'s CHECK constraint. */
+export type Role = 'owner' | 'admin' | 'practitioner' | 'receptionist';
+
+/**
+ * Thrown by `requireRole` when the session's role isn't in the allowed list.
+ * Same shape as `InvalidCredentialsError` below: one generic message for
+ * every case, so a caller can't learn which role they actually hold (or
+ * which roles an endpoint would have accepted) from the error itself.
+ */
+export class ForbiddenRoleError extends Error {
+  constructor() {
+    super('Your role does not permit this action');
+    this.name = 'ForbiddenRoleError';
+  }
+}
+
+/**
+ * Per `docs/technical/03-api-contracts.md`'s "role checks happen before the
+ * handler's own logic, uniformly": call this first in a route handler with
+ * the roles `docs/technical/03-api-contracts.md` lists for that endpoint.
+ * Reads `session.role` — already resolved by `validateSession` from the
+ * session cookie — and never any request input. Throws `ForbiddenRoleError`
+ * (callers should map that to a `403`) rather than returning a boolean, so a
+ * route can't accidentally ignore the result.
+ *
+ * This is an API-layer check only, per ADR-0006: it does not, and currently
+ * cannot without a further ADR, have a database-level backstop (no distinct
+ * Postgres role per staff role exists — see ADR-0006's "forecloses building
+ * the request/database layer around Postgres roles... without a further ADR
+ * superseding this one").
+ */
+export function requireRole(session: AuthenticatedSession, allowed: Role[]): void {
+  if (!(allowed as readonly string[]).includes(session.role)) {
+    throw new ForbiddenRoleError();
+  }
+}
+
 export interface SignInResult {
   staffId: string;
   clinicId: string;

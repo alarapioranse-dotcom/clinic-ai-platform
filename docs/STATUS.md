@@ -48,12 +48,9 @@ From P2a (PR #29):
 
 ## Open follow-ups (none blocking, none yet filed as issues — verify before
 ## opening, the issue count moved 4 → 7 during the session)
-1. clinics: GRANT SELECT on the whole table exposes every tenant's name,
-   owner_email, contact_email, contact_phone to any app_user connection —
-   personal data under GDPR. Proposed fix:
-   GRANT SELECT (id, name, status, working_hours) ON clinics TO app_user.
-   GRANT INSERT also lets the runtime role create tenants, which is an
-   administrative operation.
+1. CI runs but is not enforced — main is unprotected, so a red check does
+   not block a merge. The format:check failure on #30 reached main freely.
+   Enable branch protection on main requiring the CI check to pass.
 2. ADR-0006's mandatory pooler CI check is implemented as a code-level
    guard, not a real pooler-config check. The ADR condition is NOT met.
 3. 3 pre-existing high-severity npm audit advisories in next's transitive
@@ -110,6 +107,8 @@ root unless the full path is typed. Prettier fails on hand-aligned markdown
 tables — use bullet lists. To read a file quickly, open the raw URL and
 Select all → Copy rather than pasting screenshots.
 
-## My question for the new session
-Two candidates for the next slice: finish P2 (roles and permissions per
-ADR-0004), or clear the follow-up issues above first. Which, and why?
+## Next slice
+Follow-ups 1-7 above, or P2b (roles and permissions per ADR-0004).
+Session of 2026-09-04: closed old follow-ups 2, 3, 10, and the clinics
+INSERT grant (#31 — INSERT revoked, test fixture moved to the admin
+connection). PR #6 closed as superseded. #30 merged.

@@ -10,6 +10,9 @@ staff authentication are now real code, not documentation.
 - All branches deleted. CI green on main.
 - PR #6 (docs/project-memory templates) closed as superseded by this file.
 - docs/STATUS.md is in .prettierignore — it is hand-edited from the browser.
+- - PR #31 (revoke INSERT on clinics from app_user) → merged
+- PR #32 (requireRole helper + role-checked GET /api/patients) → merged
+- main is branch-protected: PRs required, CI check enforced
 
 ChatGPT is no longer available (free tier exhausted), so it no longer acts
 as architect/challenger. That role now falls to Claude in chat. Claude Code
@@ -48,22 +51,23 @@ From P2a (PR #29):
 
 ## Open follow-ups (none blocking, none yet filed as issues — verify before
 ## opening, the issue count moved 4 → 7 during the session)
-1. CI runs but is not enforced — main is unprotected, so a red check does
-   not block a merge. The format:check failure on #30 reached main freely.
-   Enable branch protection on main requiring the CI check to pass.
-2. ADR-0006's mandatory pooler CI check is implemented as a code-level
+1. ADR-0006's mandatory pooler CI check is implemented as a code-level
    guard, not a real pooler-config check. The ADR condition is NOT met.
-3. 3 pre-existing high-severity npm audit advisories in next's transitive
+2. 3 pre-existing high-severity npm audit advisories in next's transitive
    postcss/sharp deps.
-4. No dedicated sign-in page yet — the (app) guard redirects to /.
-5. 0003_clinics.sql: comment describes clinics_id_key UNIQUE (id) as a
+3. No dedicated sign-in page yet — the (app) guard redirects to /.
+4. 0003_clinics.sql: comment describes clinics_id_key UNIQUE (id) as a
    composite FK target, but it is single-column and redundant given the PK.
-6. Operational, for the hosting decision record: app_user's password is
+5. Operational, for the hosting decision record: app_user's password is
    visible in pg_stat_activity while migrate runs, and would be captured
    under log_statement='all'.
-7. CLAUDE.md stale lines: ADR-0009 listed as Proposed (it is Accepted); the
+6. CLAUDE.md stale lines: ADR-0009 listed as Proposed (it is Accepted); the
    P1-complete claim is now actually true post-merge but was written when it
    covered docs only.
+7. Practitioner writes are blocked at the API layer only. ADR-0006 forecloses
+   a per-role Postgres role, so a middleware bug would reach the database
+   unopposed. Closing this needs its own ADR superseding ADR-0006 — an
+   accepted, documented gap, not a regression.
 
 Closed during the 2026-09-04 session: old 2 and 3 (db.ts ROLLBACK and
 withoutTenantContext) were already fixed in #29; old 10 (README phase table)
@@ -108,7 +112,7 @@ tables — use bullet lists. To read a file quickly, open the raw URL and
 Select all → Copy rather than pasting screenshots.
 
 ## Next slice
-Follow-ups 1-7 above, or P2b (roles and permissions per ADR-0004).
-Session of 2026-09-04: closed old follow-ups 2, 3, 10, and the clinics
-INSERT grant (#31 — INSERT revoked, test fixture moved to the admin
-connection). PR #6 closed as superseded. #30 merged.
+## Next slice
+P2b slice 1 merged (#32). Next candidates: POST /api/patients with a real
+role exclusion, or /api/staff (pulls in the invitation transaction and the
+">=1 active owner" invariant).

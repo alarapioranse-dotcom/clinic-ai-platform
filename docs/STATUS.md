@@ -88,6 +88,12 @@ is fixed.
 door choices get their own ADR before code.
 
 ## Decisions still to make
+- First UI slice: docs/product/05-screen-inventory.md places
+  /dashboard/patients at "P3 (inferred)" — the doc itself flags this as a
+  judgment call, not settled scope. GET /api/patients already exists from
+  P2b (#32). Either re-scope that screen to P2 with a note explaining why,
+  or ship only /login plus a bare /dashboard. /login itself is cleanly P2 —
+  the roadmap's P2 acceptance criteria state it directly.
 - Post-operative instructions: may the AI quote clinic-authored aftercare
   text at all, or only via a labelled document lookup? Gates P5 knowledge
   base content policy. Cheap now, expensive to retrofit.
@@ -112,7 +118,9 @@ tables — use bullet lists. To read a file quickly, open the raw URL and
 Select all → Copy rather than pasting screenshots.
 
 ## Next slice
-## Next slice
 P2b slice 1 merged (#32). Next candidates: POST /api/patients with a real
 role exclusion, or /api/staff (pulls in the invitation transaction and the
 ">=1 active owner" invariant).
+Investigated 2026-09-05: sign-in page is P2, patients list is the contested
+piece. Design tokens already exist in src/app/globals.css; layout is
+deliberately unspecified per docs/product/00-overview.md.

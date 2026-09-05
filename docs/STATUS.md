@@ -13,6 +13,11 @@ staff authentication are now real code, not documentation.
 - - PR #31 (revoke INSERT on clinics from app_user) → merged
 - PR #32 (requireRole helper + role-checked GET /api/patients) → merged
 - main is branch-protected: PRs required, CI check enforced
+- Decided 2026-09-05: /dashboard/patients re-scoped from "P3 (inferred)" to
+  P2 in docs/product/05-screen-inventory.md. GET /api/patients already
+  exists, tenant-scoped and role-checked (#32); the P3 placement was the
+  screen inventory's own inferred judgment call, not settled scope; and
+  /login plus a bare dashboard alone gives a clinic nothing to evaluate.
 
 ChatGPT is no longer available (free tier exhausted), so it no longer acts
 as architect/challenger. That role now falls to Claude in chat. Claude Code
@@ -88,12 +93,6 @@ is fixed.
 door choices get their own ADR before code.
 
 ## Decisions still to make
-- First UI slice: docs/product/05-screen-inventory.md places
-  /dashboard/patients at "P3 (inferred)" — the doc itself flags this as a
-  judgment call, not settled scope. GET /api/patients already exists from
-  P2b (#32). Either re-scope that screen to P2 with a note explaining why,
-  or ship only /login plus a bare /dashboard. /login itself is cleanly P2 —
-  the roadmap's P2 acceptance criteria state it directly.
 - Post-operative instructions: may the AI quote clinic-authored aftercare
   text at all, or only via a labelled document lookup? Gates P5 knowledge
   base content policy. Cheap now, expensive to retrofit.

@@ -15,6 +15,7 @@
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
     "db:migrate": "tsx scripts/migrate.ts",
+    "db:seed": "tsx scripts/seed.ts",
     "db:verify-isolation-meaningful": "tsx scripts/verify-isolation-meaningful.ts",
     "test": "vitest run"
   },

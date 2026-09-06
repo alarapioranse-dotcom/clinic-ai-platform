@@ -75,3 +75,25 @@ export function getAppUserPassword(): string {
 export function isTestEnvironment(): boolean {
   return process.env.NODE_ENV === 'test';
 }
+
+/**
+ * The demo staff account's plaintext password for `scripts/seed.ts`,
+ * hashed before it ever touches the database — never read by the running
+ * application. Deliberately has no default: an unset value fails loudly
+ * rather than the seed falling back to some hardcoded, publicly-known
+ * password, which the "no real patient or clinic data anywhere" hard rule
+ * in CLAUDE.md would treat no better than a real credential leak.
+ */
+export function getSeedStaffPassword(): string {
+  return requireEnv('SEED_STAFF_PASSWORD');
+}
+
+/**
+ * `scripts/seed.ts`'s explicit override for its "refuse to run when
+ * NEXT_PUBLIC_APP_ENV=production" default. Checked against the exact
+ * string `"true"`, not merely "is this set", so an empty value or a typo
+ * can never accidentally authorize a production seed run.
+ */
+export function isSeedForceEnabled(): boolean {
+  return process.env.SEED_FORCE === 'true';
+}

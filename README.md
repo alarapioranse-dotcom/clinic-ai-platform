@@ -64,25 +64,26 @@ src/
 db/
   migrations/   # plain numbered SQL files, applied by scripts/migrate.ts
 scripts/
-  migrate.ts, verify-isolation-meaningful.ts
+  migrate.ts, seed.ts, verify-isolation-meaningful.ts
 tests/
   db/   # tenant-isolation and pooler-configuration guard tests (vitest)
 ```
 
 ## Scripts
 
-| Script                                   | Description                                                         |
-| ---------------------------------------- | ------------------------------------------------------------------- |
-| `npm run dev`                            | Start the dev server.                                               |
-| `npm run build`                          | Production build.                                                   |
-| `npm run start`                          | Start the production server (after `build`).                        |
-| `npm run lint`                           | Run ESLint (`eslint .`).                                            |
-| `npm run format`                         | Format the repo with Prettier.                                      |
-| `npm run format:check`                   | Check formatting without writing.                                   |
-| `npm run typecheck`                      | Run `tsc --noEmit`.                                                 |
-| `npm run db:migrate`                     | Apply pending SQL migrations in `db/migrations/`.                   |
-| `npm test`                               | Run the automated test suite (requires migrations already applied). |
-| `npm run db:verify-isolation-meaningful` | One-time manual check (not CI) — see the script's own comment.      |
+| Script                                   | Description                                                                                                                |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `npm run dev`                            | Start the dev server.                                                                                                      |
+| `npm run build`                          | Production build.                                                                                                          |
+| `npm run start`                          | Start the production server (after `build`).                                                                               |
+| `npm run lint`                           | Run ESLint (`eslint .`).                                                                                                   |
+| `npm run format`                         | Format the repo with Prettier.                                                                                             |
+| `npm run format:check`                   | Check formatting without writing.                                                                                          |
+| `npm run typecheck`                      | Run `tsc --noEmit`.                                                                                                        |
+| `npm run db:migrate`                     | Apply pending SQL migrations in `db/migrations/`.                                                                          |
+| `npm run db:seed`                        | Deployment-validation seed — one demo clinic + one demo staff account, idempotent. See "Deployment validation seed" below. |
+| `npm test`                               | Run the automated test suite (requires migrations already applied).                                                        |
+| `npm run db:verify-isolation-meaningful` | One-time manual check (not CI) — see the script's own comment.                                                             |
 
 ## Database (P1 foundation)
 
@@ -114,6 +115,65 @@ substitute. The application connects as a least-privilege `app_user` role, never
 table-owning role migrations run as (`db/migrations/0002_app_role.sql`) — RLS is not a meaningful
 guarantee against a connection that owns the tables it protects.
 
+## Deployment validation seed
+
+`scripts/seed.ts` (`npm run db:seed`) creates exactly one demo clinic and one demo staff account,
+so a deployment's staff sign-in -> `app_user` -> RLS path (P2-A) can be exercised end-to-end when
+there is no other data yet. It is for deployment validation only — never a source of real clinic
+or patient data (CLAUDE.md hard rule) — and it never touches patients, conversations,
+appointments, or any other clinical data.
+
+**Idempotent.** Every identifier (clinic id, staff id, staff email) is a fixed constant in the
+script, not read from the environment — rerunning it converges the same two rows to the same
+values instead of creating duplicates. It connects with `DATABASE_URL` (the owner/migration role),
+exactly like `db:migrate` — never `APP_DATABASE_URL`.
+
+**Refuses to run when `NEXT_PUBLIC_APP_ENV=production`** unless `SEED_FORCE=true` is set
+explicitly.
+
+Local/CI, after `db:migrate`:
+
+```bash
+npm run db:seed
+```
+
+Against a deployed environment (e.g. Render Free, which has no Shell/One-Off Jobs — run this from
+your own machine against the database's **External** Database URL from the Render dashboard, not
+the Internal one):
+
+```bash
+NEXT_PUBLIC_APP_URL="https://<your-render-app>.onrender.com" \
+NEXT_PUBLIC_APP_ENV=production \
+SEED_FORCE=true \
+DATABASE_URL="<External Database URL from Render>" \
+SEED_STAFF_PASSWORD="<a strong password you choose now, never committed>" \
+npx tsx scripts/seed.ts
+```
+
+`SEED_STAFF_PASSWORD` must be at least 12 characters (rejected otherwise, before any database
+connection is opened) and is hashed with the same Argon2id parameters the running application uses
+(`src/features/auth/password.ts`) before it ever touches the database — the plaintext value is
+never stored, logged, or committed; choose it at the command line each time and use it to sign in
+at `/login` as `demo-staff@example.test`.
+
+**This is a demo account, not a real staff member — treat it accordingly:**
+
+- It signs in with the `receptionist` role (ADR-0004's lowest-privilege role with any API access).
+  Nothing this seed exists to validate — sign-in, `app_user`, tenant context, `GET /api/patients`
+  — needs more than that, and its identity (email, role, clinic id) is published in this file, so
+  minimizing its privilege matters.
+- **Do not use it for real clinic operations.** It exists to prove the deployed auth path works,
+  not to run a clinic.
+- **Do not enter real patient data into any environment it has access to** — this seed itself never
+  creates patients, conversations, or appointments, and neither should you, on this account or any
+  other, per CLAUDE.md's hard rule against real patient or clinic data.
+- **After validation, deactivate or remove the demo account.** Its email, role, and id are public
+  (this file), so its password is the only thing protecting it for as long as it stays active.
+  Deactivate it the same way the seed itself connects — via `DATABASE_URL`, e.g.:
+  ```sql
+  UPDATE staff_members SET status = 'deactivated' WHERE id = '00000000-0000-0000-0000-000000000002';
+  ```
+
 ## Environment variables
 
 Read exclusively by `src/lib/env.ts`, which throws at startup if a required variable is missing
@@ -124,13 +184,15 @@ it to a gitignored `.env.local`:
 cp .env.example .env.local
 ```
 
-| Variable              | Required                      | Description                                                                                                                                  |
-| --------------------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `NEXT_PUBLIC_APP_URL` | Yes                           | Public base URL of the deployed app.                                                                                                         |
-| `NEXT_PUBLIC_APP_ENV` | Yes                           | One of `development` \| `staging` \| `production`.                                                                                           |
-| `DATABASE_URL`        | Only for `db:migrate`         | Owner/migration connection. Never used by the running app.                                                                                   |
-| `APP_DATABASE_URL`    | Only for DB-backed code/tests | Least-privilege runtime connection — see "Database" above.                                                                                   |
-| `APP_USER_PASSWORD`   | Only for `db:migrate`         | Sets `app_user`'s password via a parameterized statement; never embedded in a migration file. Must match the password in `APP_DATABASE_URL`. |
+| Variable              | Required                         | Description                                                                                                                                                        |
+| --------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `NEXT_PUBLIC_APP_URL` | Yes                              | Public base URL of the deployed app.                                                                                                                               |
+| `NEXT_PUBLIC_APP_ENV` | Yes                              | One of `development` \| `staging` \| `production`.                                                                                                                 |
+| `DATABASE_URL`        | Only for `db:migrate`            | Owner/migration connection. Never used by the running app.                                                                                                         |
+| `APP_DATABASE_URL`    | Only for DB-backed code/tests    | Least-privilege runtime connection — see "Database" above.                                                                                                         |
+| `APP_USER_PASSWORD`   | Only for `db:migrate`            | Sets `app_user`'s password via a parameterized statement; never embedded in a migration file. Must match the password in `APP_DATABASE_URL`.                       |
+| `SEED_STAFF_PASSWORD` | Only for `db:seed`               | Plaintext password for the seed's one demo staff account (minimum 12 characters), hashed before storage — see "Deployment validation seed" above. Never committed. |
+| `SEED_FORCE`          | Only for `db:seed` in production | Set to exactly `true` to let `db:seed` run when `NEXT_PUBLIC_APP_ENV=production`; otherwise it refuses.                                                            |
 
 ## Deployment
 

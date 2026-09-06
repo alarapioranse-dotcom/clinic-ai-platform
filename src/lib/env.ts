@@ -75,3 +75,50 @@ export function getAppUserPassword(): string {
 export function isTestEnvironment(): boolean {
   return process.env.NODE_ENV === 'test';
 }
+
+/**
+ * The minimum length required of `SEED_STAFF_PASSWORD` (see below). This is
+ * a safety floor for the deployment-validation seed specifically — the
+ * account it creates has a permanently public identity (its email, role,
+ * and clinic id are documented in this repository), so its password is the
+ * only thing protecting it once a deployment has run the seed. This does
+ * NOT change the normal staff sign-in password policy in
+ * `src/features/auth/**` — nothing there currently enforces a minimum
+ * length, and this constant is not read by that code path.
+ */
+export const SEED_STAFF_PASSWORD_MIN_LENGTH = 12;
+
+/**
+ * The demo staff account's plaintext password for `scripts/seed.ts`,
+ * hashed before it ever touches the database — never read by the running
+ * application. Deliberately has no default: an unset value fails loudly
+ * rather than the seed falling back to some hardcoded, publicly-known
+ * password, which the "no real patient or clinic data anywhere" hard rule
+ * in CLAUDE.md would treat no better than a real credential leak.
+ *
+ * Also rejects a password shorter than SEED_STAFF_PASSWORD_MIN_LENGTH,
+ * checked here — before `scripts/seed.ts` opens any database connection or
+ * writes anything — so a too-short value fails loudly instead of minting a
+ * weakly-protected, publicly-identifiable account (PR #40 review, BLOCKER
+ * B1). The error message states the requirement, never the value itself.
+ */
+export function getSeedStaffPassword(): string {
+  const password = requireEnv('SEED_STAFF_PASSWORD');
+  if (password.length < SEED_STAFF_PASSWORD_MIN_LENGTH) {
+    throw new Error(
+      `SEED_STAFF_PASSWORD is too short: it must be at least ${SEED_STAFF_PASSWORD_MIN_LENGTH} ` +
+        'characters. Choose a longer value — never log or commit the password itself.',
+    );
+  }
+  return password;
+}
+
+/**
+ * `scripts/seed.ts`'s explicit override for its "refuse to run when
+ * NEXT_PUBLIC_APP_ENV=production" default. Checked against the exact
+ * string `"true"`, not merely "is this set", so an empty value or a typo
+ * can never accidentally authorize a production seed run.
+ */
+export function isSeedForceEnabled(): boolean {
+  return process.env.SEED_FORCE === 'true';
+}

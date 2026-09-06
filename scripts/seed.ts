@@ -32,7 +32,16 @@ export const DEMO_CLINIC_NAME = 'Deployment Validation Demo Clinic';
 export const DEMO_CLINIC_CONTACT_EMAIL = 'demo-clinic@example.test';
 export const DEMO_STAFF_ID = '00000000-0000-0000-0000-000000000002';
 export const DEMO_STAFF_EMAIL = 'demo-staff@example.test';
-export const DEMO_STAFF_ROLE = 'owner';
+/**
+ * The lowest-privilege ADR-0004 role with any API access — not `owner`
+ * (PR #40 review, IMPORTANT I1). This account's identity (email, role,
+ * clinic id) is published in this repository, so its blast radius if the
+ * password is ever compromised should be minimized, not maximized; nothing
+ * this seed exists to validate (sign-in, app_user, tenant context,
+ * `GET /api/patients`) requires more than `receptionist` — that endpoint's
+ * own `requireRole` call accepts all four roles equally.
+ */
+export const DEMO_STAFF_ROLE = 'receptionist';
 
 /**
  * The "refuse to run in production" gate. Pure and dependency-free —

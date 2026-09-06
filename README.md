@@ -150,10 +150,29 @@ SEED_STAFF_PASSWORD="<a strong password you choose now, never committed>" \
 npx tsx scripts/seed.ts
 ```
 
-`SEED_STAFF_PASSWORD` is hashed with the same Argon2id parameters the running application uses
+`SEED_STAFF_PASSWORD` must be at least 12 characters (rejected otherwise, before any database
+connection is opened) and is hashed with the same Argon2id parameters the running application uses
 (`src/features/auth/password.ts`) before it ever touches the database — the plaintext value is
 never stored, logged, or committed; choose it at the command line each time and use it to sign in
 at `/login` as `demo-staff@example.test`.
+
+**This is a demo account, not a real staff member — treat it accordingly:**
+
+- It signs in with the `receptionist` role (ADR-0004's lowest-privilege role with any API access).
+  Nothing this seed exists to validate — sign-in, `app_user`, tenant context, `GET /api/patients`
+  — needs more than that, and its identity (email, role, clinic id) is published in this file, so
+  minimizing its privilege matters.
+- **Do not use it for real clinic operations.** It exists to prove the deployed auth path works,
+  not to run a clinic.
+- **Do not enter real patient data into any environment it has access to** — this seed itself never
+  creates patients, conversations, or appointments, and neither should you, on this account or any
+  other, per CLAUDE.md's hard rule against real patient or clinic data.
+- **After validation, deactivate or remove the demo account.** Its email, role, and id are public
+  (this file), so its password is the only thing protecting it for as long as it stays active.
+  Deactivate it the same way the seed itself connects — via `DATABASE_URL`, e.g.:
+  ```sql
+  UPDATE staff_members SET status = 'deactivated' WHERE id = '00000000-0000-0000-0000-000000000002';
+  ```
 
 ## Environment variables
 
@@ -165,15 +184,15 @@ it to a gitignored `.env.local`:
 cp .env.example .env.local
 ```
 
-| Variable              | Required                         | Description                                                                                                                                  |
-| --------------------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `NEXT_PUBLIC_APP_URL` | Yes                              | Public base URL of the deployed app.                                                                                                         |
-| `NEXT_PUBLIC_APP_ENV` | Yes                              | One of `development` \| `staging` \| `production`.                                                                                           |
-| `DATABASE_URL`        | Only for `db:migrate`            | Owner/migration connection. Never used by the running app.                                                                                   |
-| `APP_DATABASE_URL`    | Only for DB-backed code/tests    | Least-privilege runtime connection — see "Database" above.                                                                                   |
-| `APP_USER_PASSWORD`   | Only for `db:migrate`            | Sets `app_user`'s password via a parameterized statement; never embedded in a migration file. Must match the password in `APP_DATABASE_URL`. |
-| `SEED_STAFF_PASSWORD` | Only for `db:seed`               | Plaintext password for the seed's one demo staff account, hashed before storage — see "Deployment validation seed" above. Never committed.   |
-| `SEED_FORCE`          | Only for `db:seed` in production | Set to exactly `true` to let `db:seed` run when `NEXT_PUBLIC_APP_ENV=production`; otherwise it refuses.                                      |
+| Variable              | Required                         | Description                                                                                                                                                        |
+| --------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `NEXT_PUBLIC_APP_URL` | Yes                              | Public base URL of the deployed app.                                                                                                                               |
+| `NEXT_PUBLIC_APP_ENV` | Yes                              | One of `development` \| `staging` \| `production`.                                                                                                                 |
+| `DATABASE_URL`        | Only for `db:migrate`            | Owner/migration connection. Never used by the running app.                                                                                                         |
+| `APP_DATABASE_URL`    | Only for DB-backed code/tests    | Least-privilege runtime connection — see "Database" above.                                                                                                         |
+| `APP_USER_PASSWORD`   | Only for `db:migrate`            | Sets `app_user`'s password via a parameterized statement; never embedded in a migration file. Must match the password in `APP_DATABASE_URL`.                       |
+| `SEED_STAFF_PASSWORD` | Only for `db:seed`               | Plaintext password for the seed's one demo staff account (minimum 12 characters), hashed before storage — see "Deployment validation seed" above. Never committed. |
+| `SEED_FORCE`          | Only for `db:seed` in production | Set to exactly `true` to let `db:seed` run when `NEXT_PUBLIC_APP_ENV=production`; otherwise it refuses.                                                            |
 
 ## Deployment
 

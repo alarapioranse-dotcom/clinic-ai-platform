@@ -120,6 +120,12 @@ Select all → Copy rather than pasting screenshots.
 P2b slice 1 merged (#32). Next candidates: POST /api/patients with a real
 role exclusion, or /api/staff (pulls in the invitation transaction and the
 ">=1 active owner" invariant).
+
+Deployment in progress (issue #37): Render, Frankfurt. Postgres Starter
+($6/mo compute, 1 GB storage) being created — region must be Frankfurt,
+never a US region, per ADR-0009. Web service not created yet; it needs the
+build command, start command, and required env vars read from the repo
+first, plus the database's Internal Database URL from the Render dashboard.
 Investigated 2026-09-05: sign-in page is P2, patients list is the contested
 piece. Design tokens already exist in src/app/globals.css; layout is
 deliberately unspecified per docs/product/00-overview.md.

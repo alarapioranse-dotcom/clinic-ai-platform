@@ -76,13 +76,39 @@ CREATE POLICY tenant_isolation ON messages
 -- Enforces "a Conversation always has >= 1 Message" (docs/technical/01-database-schema.md,
 -- "messages" section) without forbidding the ordinary two-statement flow
 -- (INSERT conversation, INSERT its first message) from happening in that
--- order within one transaction: the check runs once at COMMIT, not after
--- each individual statement. Architect ruling for P3-A: included exactly as
--- specified there, not a different trigger design.
+-- order within one transaction: both checks below run once at COMMIT, not
+-- after each individual statement.
+--
+-- The doc's illustrative trigger (AFTER INSERT OR DELETE ON messages only)
+-- leaves a gap: it never fires for a conversation that receives no message
+-- INSERT or DELETE at all in a transaction, so a bare `INSERT INTO
+-- conversations` with no message ever touched could otherwise commit
+-- (Architect review on this migration's first draft). The correction is the
+-- same deferred check applied to *both* tables whose mutation can leave a
+-- conversation with zero messages — a second AFTER INSERT trigger on
+-- `conversations` itself, sharing the one check function via
+-- `TG_TABLE_NAME` — not a different invariant or a different (non-deferred)
+-- trigger design:
+--   - `messages` AFTER INSERT OR DELETE — catches deleting a conversation's
+--     last remaining message (INSERT is trivially satisfied by the row just
+--     inserted; kept for symmetry with the doc and because it's the trigger
+--     that must exist for the DELETE case to be checked at all).
+--   - `conversations` AFTER INSERT — catches a bare conversation insert with
+--     no message ever inserted for it in the same transaction.
+-- Both are deferred to COMMIT, so the ordinary "insert conversation, then
+-- insert its first message" order still succeeds: whichever trigger fires,
+-- the message row already exists in the database by the time the deferred
+-- check actually runs.
 CREATE FUNCTION assert_conversation_has_message() RETURNS trigger AS $$
 DECLARE
-  affected_conversation_id uuid := COALESCE(NEW.conversation_id, OLD.conversation_id);
+  affected_conversation_id uuid;
 BEGIN
+  IF TG_TABLE_NAME = 'conversations' THEN
+    affected_conversation_id := NEW.id;
+  ELSE
+    affected_conversation_id := COALESCE(NEW.conversation_id, OLD.conversation_id);
+  END IF;
+
   IF NOT EXISTS (
     SELECT 1 FROM messages WHERE conversation_id = affected_conversation_id
   ) THEN
@@ -94,6 +120,11 @@ $$ LANGUAGE plpgsql;
 
 CREATE CONSTRAINT TRIGGER conversation_has_at_least_one_message
   AFTER INSERT OR DELETE ON messages
+  DEFERRABLE INITIALLY DEFERRED
+  FOR EACH ROW EXECUTE FUNCTION assert_conversation_has_message();
+
+CREATE CONSTRAINT TRIGGER conversation_created_with_a_message
+  AFTER INSERT ON conversations
   DEFERRABLE INITIALLY DEFERRED
   FOR EACH ROW EXECUTE FUNCTION assert_conversation_has_message();
 

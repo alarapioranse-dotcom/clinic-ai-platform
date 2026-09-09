@@ -149,4 +149,73 @@ describe('tenant isolation: conversations and messages', () => {
       await admin.end();
     }
   });
+
+  it('rejects a bare conversation insert with no message ever inserted for it (deferred constraint trigger)', async () => {
+    // The other mutation path the deferred check must cover: a conversation
+    // insert with no message INSERT or DELETE against `messages` at all in
+    // the same transaction — the gap the `messages`-only trigger above
+    // leaves open (Architect review on this migration's first draft).
+    const clinic = await createTestClinic('ConvIsoBareInsert');
+    const patient = await createPatient(clinic.id, { phoneNumber: '+201000000407' });
+
+    await expect(
+      withTenantContext(clinic.id, (client) =>
+        client.query(`INSERT INTO conversations (clinic_id, patient_id) VALUES ($1, $2)`, [
+          clinic.id,
+          patient.id,
+        ]),
+      ),
+    ).rejects.toThrow(/has no messages/i);
+
+    const conversations = await withTenantContext(clinic.id, (client) =>
+      client.query('SELECT id FROM conversations WHERE patient_id = $1', [patient.id]),
+    );
+    expect(conversations.rows).toHaveLength(0);
+  });
+
+  it('the ordinary insert-conversation-then-insert-its-first-message transaction still succeeds', async () => {
+    // Both deferred triggers fire at commit; the message row already exists
+    // in the database by then, so neither trigger blocks the intended
+    // "create conversation, then insert its first message" order.
+    const clinic = await createTestClinic('ConvIsoNormalFlow');
+    const patient = await createPatient(clinic.id, { phoneNumber: '+201000000408' });
+
+    const conversationId = await withTenantContext(clinic.id, async (client) => {
+      const { rows } = await client.query<{ id: string }>(
+        `INSERT INTO conversations (clinic_id, patient_id) VALUES ($1, $2) RETURNING id`,
+        [clinic.id, patient.id],
+      );
+      const id = rows[0]!.id;
+      await client.query(
+        `INSERT INTO messages (clinic_id, conversation_id, sender_type, content)
+         VALUES ($1, $2, 'patient', 'first message')`,
+        [clinic.id, id],
+      );
+      return id;
+    });
+
+    const conversations = await withTenantContext(clinic.id, (client) =>
+      client.query('SELECT id FROM conversations WHERE id = $1', [conversationId]),
+    );
+    expect(conversations.rows).toHaveLength(1);
+  });
+
+  it('a second message insert into an already-existing conversation still succeeds', async () => {
+    const clinic = await createTestClinic('ConvIsoSecondMsg');
+    const patient = await createPatient(clinic.id, { phoneNumber: '+201000000409' });
+    const { conversationId } = await receiveInboundMessage(clinic.id, patient.id, 'first message');
+
+    await withTenantContext(clinic.id, (client) =>
+      client.query(
+        `INSERT INTO messages (clinic_id, conversation_id, sender_type, content)
+         VALUES ($1, $2, 'patient', 'second message')`,
+        [clinic.id, conversationId],
+      ),
+    );
+
+    const messages = await withTenantContext(clinic.id, (client) =>
+      client.query('SELECT id FROM messages WHERE conversation_id = $1', [conversationId]),
+    );
+    expect(messages.rows).toHaveLength(2);
+  });
 });

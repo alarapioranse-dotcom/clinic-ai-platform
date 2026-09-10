@@ -11,12 +11,69 @@ export interface ReceiveInboundMessageResult {
   messageId: string;
 }
 
+export interface Conversation {
+  id: string;
+  clinicId: string;
+  patientId: string;
+  createdAt: Date;
+}
+
+export interface Message {
+  id: string;
+  clinicId: string;
+  conversationId: string;
+  senderType: string;
+  content: string;
+  sentAt: Date;
+}
+
+export interface ConversationWithMessages {
+  conversation: Conversation;
+  messages: Message[];
+}
+
 interface ConversationRow {
   id: string;
 }
 
 interface MessageRow {
   id: string;
+}
+
+interface ConversationDetailRow {
+  id: string;
+  clinic_id: string;
+  patient_id: string;
+  created_at: Date;
+}
+
+interface MessageDetailRow {
+  id: string;
+  clinic_id: string;
+  conversation_id: string;
+  sender_type: string;
+  content: string;
+  sent_at: Date;
+}
+
+function toConversation(row: ConversationDetailRow): Conversation {
+  return {
+    id: row.id,
+    clinicId: row.clinic_id,
+    patientId: row.patient_id,
+    createdAt: row.created_at,
+  };
+}
+
+function toMessage(row: MessageDetailRow): Message {
+  return {
+    id: row.id,
+    clinicId: row.clinic_id,
+    conversationId: row.conversation_id,
+    senderType: row.sender_type,
+    content: row.content,
+    sentAt: row.sent_at,
+  };
 }
 
 /**
@@ -107,4 +164,55 @@ async function insertMessage(
     throw new Error('Insert into messages returned no row');
   }
   return row;
+}
+
+/**
+ * Lists every conversation visible in the caller's transaction. Deliberately
+ * unfiltered by `clinic_id` in application code — RLS is the filter (charter
+ * §5), same pattern as `src/features/patients/repository.ts`'s `listPatients`.
+ */
+export async function listConversations(client: PoolClient): Promise<Conversation[]> {
+  const { rows } = await client.query<ConversationDetailRow>(
+    `SELECT id, clinic_id, patient_id, created_at
+     FROM conversations
+     ORDER BY created_at`,
+  );
+  return rows.map(toConversation);
+}
+
+/**
+ * Looks up one conversation by ID, plus its messages in chronological order.
+ * Returns `null` when no such conversation is visible in the caller's
+ * transaction — RLS makes "doesn't exist" and "exists, wrong clinic"
+ * indistinguishable here, same as `getPatientsForClinic`'s pattern; this
+ * function does not run any separate cross-clinic existence check.
+ */
+export async function getConversationWithMessages(
+  client: PoolClient,
+  conversationId: string,
+): Promise<ConversationWithMessages | null> {
+  const { rows: conversationRows } = await client.query<ConversationDetailRow>(
+    `SELECT id, clinic_id, patient_id, created_at
+     FROM conversations
+     WHERE id = $1`,
+    [conversationId],
+  );
+
+  const conversationRow = conversationRows[0];
+  if (!conversationRow) {
+    return null;
+  }
+
+  const { rows: messageRows } = await client.query<MessageDetailRow>(
+    `SELECT id, clinic_id, conversation_id, sender_type, content, sent_at
+     FROM messages
+     WHERE conversation_id = $1
+     ORDER BY sent_at`,
+    [conversationId],
+  );
+
+  return {
+    conversation: toConversation(conversationRow),
+    messages: messageRows.map(toMessage),
+  };
 }

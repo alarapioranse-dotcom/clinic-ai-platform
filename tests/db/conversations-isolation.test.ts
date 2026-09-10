@@ -3,7 +3,11 @@ import { Client, type PoolClient, type QueryResult } from 'pg';
 import { withTenantContext, withoutTenantContext, closePool } from '@/lib/db';
 import { getDatabaseUrl } from '@/lib/env';
 import { createPatient } from '@/features/patients';
-import { receiveInboundMessage } from '@/features/conversations';
+import {
+  receiveInboundMessage,
+  listConversationsForClinic,
+  getConversation,
+} from '@/features/conversations';
 import { createTestClinic } from '../fixtures';
 
 /**
@@ -217,5 +221,76 @@ describe('tenant isolation: conversations and messages', () => {
       client.query('SELECT id FROM messages WHERE conversation_id = $1', [conversationId]),
     );
     expect(messages.rows).toHaveLength(2);
+  });
+
+  /**
+   * P3-B read-path RLS coverage: `listConversationsForClinic`/`getConversation`
+   * (src/features/conversations/index.ts) go through `withTenantContext` the
+   * same as every write above — these prove the read path is isolated the
+   * same way, not merely that it compiles.
+   */
+  it('Clinic A cannot list Clinic B conversations', async () => {
+    const clinicA = await createTestClinic('ConvIsoListA');
+    const clinicB = await createTestClinic('ConvIsoListB');
+    const patientB = await createPatient(clinicB.id, { phoneNumber: '+201000000410' });
+    const { conversationId } = await receiveInboundMessage(
+      clinicB.id,
+      patientB.id,
+      'hello from clinic B',
+    );
+
+    const visibleToA = await listConversationsForClinic(clinicA.id);
+
+    expect(visibleToA.map((c) => c.id)).not.toContain(conversationId);
+  });
+
+  it("Clinic A cannot retrieve Clinic B's conversation", async () => {
+    const clinicA = await createTestClinic('ConvIsoDetailA');
+    const clinicB = await createTestClinic('ConvIsoDetailB');
+    const patientB = await createPatient(clinicB.id, { phoneNumber: '+201000000411' });
+    const { conversationId } = await receiveInboundMessage(
+      clinicB.id,
+      patientB.id,
+      'hello from clinic B',
+    );
+
+    const result = await getConversation(clinicA.id, conversationId);
+
+    expect(result).toBeNull();
+  });
+
+  it("Clinic A cannot retrieve Clinic B's messages through the conversation detail read", async () => {
+    const clinicA = await createTestClinic('ConvIsoDetailMsgA');
+    const clinicB = await createTestClinic('ConvIsoDetailMsgB');
+    const patientB = await createPatient(clinicB.id, { phoneNumber: '+201000000412' });
+    const { conversationId, messageId } = await receiveInboundMessage(
+      clinicB.id,
+      patientB.id,
+      'hello from clinic B',
+    );
+
+    // Even under Clinic A's own context, no query against `messages` scoped
+    // by this conversation_id can surface Clinic B's message — RLS filters
+    // by clinic_id, not conversation_id, so this is not implied by the
+    // "conversation itself is null" case above.
+    const rawMessagesUnderA = await withTenantContext(clinicA.id, (client) =>
+      client.query('SELECT id FROM messages WHERE conversation_id = $1', [conversationId]),
+    );
+    expect(rawMessagesUnderA.rows.map((row) => row.id)).not.toContain(messageId);
+
+    const result = await getConversation(clinicA.id, conversationId);
+    expect(result).toBeNull();
+  });
+
+  it('missing tenant context fails closed for the conversation list read path', async () => {
+    const clinic = await createTestClinic('ConvIsoListNoCtx');
+    const patient = await createPatient(clinic.id, { phoneNumber: '+201000000413' });
+    await receiveInboundMessage(clinic.id, patient.id, 'hello');
+
+    await expectFailClosed((client) =>
+      client.query(
+        `SELECT id, clinic_id, patient_id, created_at FROM conversations ORDER BY created_at`,
+      ),
+    );
   });
 });

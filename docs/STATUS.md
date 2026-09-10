@@ -1,8 +1,9 @@
-# Clinic AI Platform — resume here (2026-09-03, evening)
+# Clinic AI Platform — resume here (2026-09-09)
 
 ## Where we are
-P1 and P2a are both merged to main. The database, tenant isolation, and
-staff authentication are now real code, not documentation.
+P1 and P2 are both merged to main. The database, tenant isolation, and
+staff authentication are now real code, not documentation. P3-A (clinic-
+scoped inbound conversation persistence) is the current active slice.
 
 - PR #25 (P1 Postgres + RLS tenant isolation) → merged as 2e0875c
 - PR #29 (P2a staff auth + sessions) → merged as 6a8a95b
@@ -12,6 +13,9 @@ staff authentication are now real code, not documentation.
 - docs/STATUS.md is in .prettierignore — it is hand-edited from the browser.
 - - PR #31 (revoke INSERT on clinics from app_user) → merged
 - PR #32 (requireRole helper + role-checked GET /api/patients) → merged
+- PR #45 (P2 roles and permissions per ADR-0004) → merged. P2 is closed.
+- The demo staff account (scripts/seed.ts) has been deactivated and its
+  session revoked.
 - main is branch-protected: PRs required, CI check enforced
 - Decided 2026-09-05: /dashboard/patients re-scoped from "P3 (inferred)" to
   P2 in docs/product/05-screen-inventory.md. GET /api/patients already
@@ -81,9 +85,10 @@ is fixed.
 ## Roadmap (docs/03-roadmap.md is authoritative, P0-P5 only)
 - P0 Foundation — done
 - P1 Multi-tenancy and data — done (2e0875c)
-- P2 Authentication and authorization — P2a done (6a8a95b); roles and
-  permissions per ADR-0004 still to do
-- P3 Conversations — planned
+- P2 Authentication and authorization — done (6a8a95b, #45)
+- P3 Conversations — in progress: P3-A (inbound persistence) is the current
+  active slice, not yet merged; production migration of 0009 is pending a
+  manual apply after merge (see "Next slice" below)
 - P4 Appointments — planned
 - P5 Knowledge base and AI — planned, hard criteria E1-E7 from ADR-0011
 
@@ -117,9 +122,14 @@ tables — use bullet lists. To read a file quickly, open the raw URL and
 Select all → Copy rather than pasting screenshots.
 
 ## Next slice
-P2b slice 1 merged (#32). Next candidates: POST /api/patients with a real
-role exclusion, or /api/staff (pulls in the invitation transaction and the
-">=1 active owner" invariant).
+P2 is closed (#45). Current slice is P3-A (clinic-scoped inbound
+conversation persistence): `conversations`/`messages` tables + RLS,
+`receiveInboundMessage` behind the `conversations` feature's public entry
+point, no HTTP route or messaging provider. PR open, not yet merged.
+Production migration of 0009 is pending a manual `psql` apply by the human
+owner after merge — P3-A stays open until that verification completes, per
+CLAUDE.md's phase-gating rule. Next candidates after P3-A closes: P3-B
+(staff view/reply, conversation status) or P3-C (escalations).
 
 Deployment in progress (issue #37): Render, Frankfurt. Postgres Starter
 ($6/mo compute, 1 GB storage) being created — region must be Frankfurt,

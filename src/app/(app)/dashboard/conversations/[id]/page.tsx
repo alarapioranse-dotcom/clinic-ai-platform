@@ -28,18 +28,31 @@ type DetailState =
   | { status: 'not-found' }
   | { status: 'ready'; detail: ConversationDetail };
 
+/** Roles allowed to reply (docs/technical/03-api-contracts.md, P3-C: same
+ * matrix as `POST /api/patients` — practitioner stays read-only, ADR-0004).
+ * The UI check below is a convenience only: `POST
+ * /api/conversations/:id/messages` enforces this independently and is the
+ * actual authorization boundary. */
+const REPLY_ROLES = new Set(['owner', 'admin', 'receptionist']);
+
+type ReplyState = { status: 'idle' | 'sending' | 'error' };
+
 /**
  * Same fetch/loading/error pattern as
  * src/app/(app)/dashboard/patients/PatientsList.tsx, plus a distinct
  * not-found state for the 404 GET /api/conversations/:id returns for a
  * nonexistent, cross-clinic, or malformed ID (docs/technical/03-api-contracts.md's
  * 404-vs-403 rule — those three cases are deliberately indistinguishable
- * here too). Read-only: no reply input, no status controls.
+ * here too). Roadmap P3-C adds the reply form below the message list, shown
+ * only to the roles `POST /api/conversations/:id/messages` actually allows.
  */
 export default function ConversationDetailPage() {
   const params = useParams<{ id: string }>();
   const conversationId = params.id;
   const [state, setState] = useState<DetailState>({ status: 'loading' });
+  const [role, setRole] = useState<string | null>(null);
+  const [draft, setDraft] = useState('');
+  const [reply, setReply] = useState<ReplyState>({ status: 'idle' });
 
   const load = useCallback(async () => {
     try {
@@ -58,14 +71,56 @@ export default function ConversationDetailPage() {
     }
   }, [conversationId]);
 
+  const loadSession = useCallback(async () => {
+    try {
+      const response = await fetch('/api/auth/session');
+      if (!response.ok) return;
+      const body: { data: { role: string } } = await response.json();
+      setRole(body.data.role);
+    } catch {
+      // Reply controls just stay hidden — the API remains the real
+      // authorization boundary regardless of this call's outcome.
+    }
+  }, []);
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
-  }, [load]);
+    loadSession();
+  }, [load, loadSession]);
 
   function handleRetry() {
     setState({ status: 'loading' });
     load();
+  }
+
+  async function sendReply() {
+    if (!draft.trim()) return;
+    setReply({ status: 'sending' });
+    try {
+      const response = await fetch(`/api/conversations/${conversationId}/messages`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ content: draft }),
+      });
+      if (!response.ok) {
+        setReply({ status: 'error' });
+        return;
+      }
+      const body: { data: MessageRow } = await response.json();
+      setState((current) =>
+        current.status === 'ready'
+          ? {
+              status: 'ready',
+              detail: { ...current.detail, messages: [...current.detail.messages, body.data] },
+            }
+          : current,
+      );
+      setDraft('');
+      setReply({ status: 'idle' });
+    } catch {
+      setReply({ status: 'error' });
+    }
   }
 
   return (
@@ -112,6 +167,36 @@ export default function ConversationDetailPage() {
               </li>
             ))}
           </ul>
+
+          {role !== null && REPLY_ROLES.has(role) && (
+            <div className="border-line mt-6 flex flex-col gap-3 border-t pt-6">
+              <textarea
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                disabled={reply.status === 'sending'}
+                placeholder="اكتب ردك هنا..."
+                rows={3}
+                className="border-line bg-paper text-ink placeholder:text-muted w-full rounded-lg border px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+              />
+
+              {reply.status === 'error' && (
+                <p role="alert" className="text-sm font-medium text-red-700">
+                  Message failed to send
+                </p>
+              )}
+
+              <div>
+                <Button onClick={sendReply} disabled={reply.status === 'sending' || !draft.trim()}>
+                  {reply.status === 'sending' ? 'جارٍ الإرسال...' : 'إرسال'}
+                </Button>
+                {reply.status === 'error' && (
+                  <Button variant="secondary" onClick={sendReply} className="mr-3">
+                    إعادة المحاولة
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -16,17 +16,28 @@
  * staff replies, AI, escalations, and status are explicitly out of scope
  * (P3-C and later).
  *
+ * `sendStaffReply`: the P3-C write path behind `POST
+ * /api/conversations/:id/messages` (owner/admin/receptionist only —
+ * practitioner stays read-only, ADR-0004). `staffId` must be the caller's
+ * own authenticated session identity — this feature never accepts one as
+ * data, and nothing here resolves it itself. No AI/assistant sender type,
+ * no message-length limit beyond the existing non-empty check, and no
+ * conversation status — all explicitly out of scope for this slice.
+ *
  * Every function here runs inside one `withTenantContext` transaction: the
  * caller supplies `clinicId` (resolved elsewhere — a session, in production;
  * this feature does not resolve it itself), and RLS plus the composite
- * foreign keys in `db/migrations/0009_conversations.sql` are the actual
- * isolation and integrity boundary, not any filtering done here.
+ * foreign keys in `db/migrations/0009_conversations.sql` and
+ * `db/migrations/0010_staff_reply_messages.sql` are the actual isolation and
+ * integrity boundary, not any filtering done here.
  */
 import { withTenantContext } from '@/lib/db';
 import {
   receiveInboundMessageForPatient,
   listConversations,
   getConversationWithMessages,
+  insertStaffMessage,
+  ConversationNotFoundError,
   type ReceiveInboundMessageResult,
   type Conversation,
   type Message,
@@ -34,6 +45,7 @@ import {
 } from './repository';
 
 export type { ReceiveInboundMessageResult, Conversation, Message, ConversationWithMessages };
+export { ConversationNotFoundError };
 
 export async function receiveInboundMessage(
   clinicId: string,
@@ -55,5 +67,24 @@ export async function getConversation(
 ): Promise<ConversationWithMessages | null> {
   return withTenantContext(clinicId, (client) =>
     getConversationWithMessages(client, conversationId),
+  );
+}
+
+/**
+ * Sends one staff reply into `conversationId`. `staffId` must be the
+ * calling staff member's own authenticated session identity — never a
+ * value taken from request input — and is persisted as the message's
+ * `sender_staff_id`. Rejects empty/whitespace-only `content`, same
+ * convention as `receiveInboundMessage`. Throws `ConversationNotFoundError`
+ * for a nonexistent or cross-clinic `conversationId`.
+ */
+export async function sendStaffReply(
+  clinicId: string,
+  conversationId: string,
+  staffId: string,
+  content: string,
+): Promise<Message> {
+  return withTenantContext(clinicId, (client) =>
+    insertStaffMessage(client, clinicId, conversationId, staffId, content),
   );
 }

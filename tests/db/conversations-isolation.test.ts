@@ -7,8 +7,9 @@ import {
   receiveInboundMessage,
   listConversationsForClinic,
   getConversation,
+  sendStaffReply,
 } from '@/features/conversations';
-import { createTestClinic } from '../fixtures';
+import { createTestClinic, createTestStaffMember } from '../fixtures';
 
 /**
  * Same fail-closed helper as tests/db/tenant-isolation.test.ts — see that
@@ -292,5 +293,103 @@ describe('tenant isolation: conversations and messages', () => {
         `SELECT id, clinic_id, patient_id, created_at FROM conversations ORDER BY created_at`,
       ),
     );
+  });
+
+  /**
+   * P3-C write-path RLS/schema coverage (`db/migrations/0010_staff_reply_messages.sql`):
+   * staff-authored messages, the new `messages_sender_staff_same_clinic`
+   * composite FK, and the least-privilege grants on `messages` (still no
+   * UPDATE/DELETE — messages remain immutable once sent).
+   */
+  describe('staff replies: messages', () => {
+    it('a staff-authored message obeys tenant isolation the same way a patient-authored one does', async () => {
+      const clinicA = await createTestClinic('ConvIsoStaffA');
+      const clinicB = await createTestClinic('ConvIsoStaffB');
+      const patientB = await createPatient(clinicB.id, { phoneNumber: '+201000000414' });
+      const staffB = await createTestStaffMember(clinicB.id, 'ConvIsoStaffB');
+      const { conversationId } = await receiveInboundMessage(clinicB.id, patientB.id, 'hello');
+      const staffMessage = await sendStaffReply(clinicB.id, conversationId, staffB.id, 'reply');
+
+      const messagesVisibleToA = await withTenantContext(clinicA.id, (client) =>
+        client.query('SELECT id FROM messages'),
+      );
+      expect(messagesVisibleToA.rows.map((row) => row.id)).not.toContain(staffMessage.id);
+
+      const result = await getConversation(clinicA.id, conversationId);
+      expect(result).toBeNull();
+    });
+
+    it('rejects a message whose sender_staff_id belongs to a different clinic than clinic_id, via the composite FK', async () => {
+      const clinicA = await createTestClinic('ConvIsoStaffFkA');
+      const clinicB = await createTestClinic('ConvIsoStaffFkB');
+      const patientA = await createPatient(clinicA.id, { phoneNumber: '+201000000415' });
+      const staffB = await createTestStaffMember(clinicB.id, 'ConvIsoStaffFkB');
+      const { conversationId } = await receiveInboundMessage(clinicA.id, patientA.id, 'hello');
+
+      // Bypasses the conversations feature's own repository (which never
+      // lets a caller do this) to prove the *database*, not application
+      // code, rejects a cross-clinic sender_staff_id — same pattern as the
+      // conversations_patient_same_clinic test above, applied to
+      // messages_sender_staff_same_clinic.
+      await expect(
+        withTenantContext(clinicA.id, (client) =>
+          client.query(
+            `INSERT INTO messages (clinic_id, conversation_id, sender_type, sender_staff_id, content)
+             VALUES ($1, $2, 'staff', $3, 'cross-clinic staff')`,
+            [clinicA.id, conversationId, staffB.id],
+          ),
+        ),
+      ).rejects.toThrow(/violates foreign key constraint|messages_sender_staff_same_clinic/i);
+
+      const messages = await withTenantContext(clinicA.id, (client) =>
+        client.query('SELECT id FROM messages WHERE sender_staff_id = $1', [staffB.id]),
+      );
+      expect(messages.rows).toHaveLength(0);
+    });
+
+    it('no tenant context set fails closed for a staff message insert', async () => {
+      const clinic = await createTestClinic('ConvIsoStaffNoCtx');
+      const patient = await createPatient(clinic.id, { phoneNumber: '+201000000416' });
+      const staff = await createTestStaffMember(clinic.id, 'ConvIsoStaffNoCtx');
+      const { conversationId } = await receiveInboundMessage(clinic.id, patient.id, 'hello');
+
+      await expect(
+        withoutTenantContext((client) =>
+          client.query(
+            `INSERT INTO messages (clinic_id, conversation_id, sender_type, sender_staff_id, content)
+             VALUES ($1, $2, 'staff', $3, 'should never be written')`,
+            [clinic.id, conversationId, staff.id],
+          ),
+        ),
+      ).rejects.toThrow(/row-level security policy|invalid input syntax for type uuid/i);
+    });
+
+    it('app_user has no UPDATE grant on messages', async () => {
+      const clinic = await createTestClinic('ConvIsoStaffNoUpdate');
+      const patient = await createPatient(clinic.id, { phoneNumber: '+201000000417' });
+      const staff = await createTestStaffMember(clinic.id, 'ConvIsoStaffNoUpdate');
+      const { conversationId } = await receiveInboundMessage(clinic.id, patient.id, 'hello');
+      const message = await sendStaffReply(clinic.id, conversationId, staff.id, 'original');
+
+      await expect(
+        withTenantContext(clinic.id, (client) =>
+          client.query(`UPDATE messages SET content = $1 WHERE id = $2`, ['edited', message.id]),
+        ),
+      ).rejects.toThrow(/permission denied/i);
+    });
+
+    it('app_user has no DELETE grant on messages', async () => {
+      const clinic = await createTestClinic('ConvIsoStaffNoDelete');
+      const patient = await createPatient(clinic.id, { phoneNumber: '+201000000418' });
+      const staff = await createTestStaffMember(clinic.id, 'ConvIsoStaffNoDelete');
+      const { conversationId } = await receiveInboundMessage(clinic.id, patient.id, 'hello');
+      const message = await sendStaffReply(clinic.id, conversationId, staff.id, 'original');
+
+      await expect(
+        withTenantContext(clinic.id, (client) =>
+          client.query(`DELETE FROM messages WHERE id = $1`, [message.id]),
+        ),
+      ).rejects.toThrow(/permission denied/i);
+    });
   });
 });

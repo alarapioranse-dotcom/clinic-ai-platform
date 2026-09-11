@@ -1,4 +1,4 @@
-import type { PoolClient } from 'pg';
+import { DatabaseError, type PoolClient } from 'pg';
 
 /**
  * Internal to this feature — not exported from `./index.ts`. Nothing outside
@@ -23,6 +23,7 @@ export interface Message {
   clinicId: string;
   conversationId: string;
   senderType: string;
+  senderStaffId: string | null;
   content: string;
   sentAt: Date;
 }
@@ -52,8 +53,28 @@ interface MessageDetailRow {
   clinic_id: string;
   conversation_id: string;
   sender_type: string;
+  sender_staff_id: string | null;
   content: string;
   sent_at: Date;
+}
+
+/**
+ * Thrown by `insertStaffMessage` when the target conversation doesn't exist
+ * in this clinic — either it was never created, or it belongs to a
+ * different clinic. Both cases surface identically as a violation of the
+ * `messages_conversation_same_clinic` composite foreign key
+ * (`db/migrations/0009_conversations.sql`): the caller always supplies its
+ * own `clinicId` (from the session), so a conversation row that does exist
+ * but under a different clinic_id simply has no matching (id, clinic_id)
+ * pair for that FK to satisfy — the same "let the schema be the isolation
+ * boundary" pattern as `conversations_patient_same_clinic`, not a separate
+ * existence lookup added here for that purpose.
+ */
+export class ConversationNotFoundError extends Error {
+  constructor() {
+    super('Conversation not found');
+    this.name = 'ConversationNotFoundError';
+  }
 }
 
 function toConversation(row: ConversationDetailRow): Conversation {
@@ -71,6 +92,7 @@ function toMessage(row: MessageDetailRow): Message {
     clinicId: row.clinic_id,
     conversationId: row.conversation_id,
     senderType: row.sender_type,
+    senderStaffId: row.sender_staff_id,
     content: row.content,
     sentAt: row.sent_at,
   };
@@ -167,6 +189,53 @@ async function insertMessage(
 }
 
 /**
+ * Inserts one staff-authored reply into `conversationId`, symmetrical with
+ * `insertMessage` above (roadmap P3-C). `staffId` is trusted as-is — the
+ * caller (the feature entry point) is required to have resolved it from the
+ * authenticated session, never from request input — and is written as
+ * `sender_staff_id` with `sender_type = 'staff'`.
+ *
+ * Deliberately runs no separate "does this conversation exist in this
+ * clinic" lookup (approved P3-C mandate): a nonexistent or cross-clinic
+ * `conversationId` is rejected structurally by the
+ * `messages_conversation_same_clinic` composite foreign key
+ * (`db/migrations/0009_conversations.sql`), caught here and translated to
+ * `ConversationNotFoundError` — the one Postgres error this function
+ * recognizes and rewrites; every other database error propagates as-is.
+ */
+export async function insertStaffMessage(
+  client: PoolClient,
+  clinicId: string,
+  conversationId: string,
+  staffId: string,
+  content: string,
+): Promise<Message> {
+  if (!content.trim()) {
+    throw new Error('content is required to send a staff reply');
+  }
+
+  try {
+    const { rows } = await client.query<MessageDetailRow>(
+      `INSERT INTO messages (clinic_id, conversation_id, sender_type, sender_staff_id, content)
+       VALUES ($1, $2, 'staff', $3, $4)
+       RETURNING id, clinic_id, conversation_id, sender_type, sender_staff_id, content, sent_at`,
+      [clinicId, conversationId, staffId, content],
+    );
+
+    const row = rows[0];
+    if (!row) {
+      throw new Error('Insert into messages returned no row');
+    }
+    return toMessage(row);
+  } catch (err) {
+    if (err instanceof DatabaseError && err.constraint === 'messages_conversation_same_clinic') {
+      throw new ConversationNotFoundError();
+    }
+    throw err;
+  }
+}
+
+/**
  * Lists every conversation visible in the caller's transaction. Deliberately
  * unfiltered by `clinic_id` in application code — RLS is the filter (charter
  * §5), same pattern as `src/features/patients/repository.ts`'s `listPatients`.
@@ -204,7 +273,7 @@ export async function getConversationWithMessages(
   }
 
   const { rows: messageRows } = await client.query<MessageDetailRow>(
-    `SELECT id, clinic_id, conversation_id, sender_type, content, sent_at
+    `SELECT id, clinic_id, conversation_id, sender_type, sender_staff_id, content, sent_at
      FROM messages
      WHERE conversation_id = $1
      ORDER BY sent_at`,

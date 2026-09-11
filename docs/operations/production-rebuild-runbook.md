@@ -114,7 +114,6 @@ service's actual URL is known, and re-check it any time the service is recreated
    connects from Termux uses the External URL.
 
 2. **Derive `DATABASE_URL` and `APP_DATABASE_URL`** — don't guess these; they come from the code:
-
    - Per `src/lib/env.ts` (`getDatabaseUrl`), **`DATABASE_URL` is the owner/migration
      connection** — the role that creates the `app_user` and `auth_bootstrap` roles, every table,
      every RLS policy, and every grant (`scripts/migrate.ts` connects with this and only this).
@@ -139,7 +138,7 @@ service's actual URL is known, and re-check it any time the service is recreated
    anywhere. Use it in two places:
    - As the value of the `APP_USER_PASSWORD` environment variable itself.
    - Embedded in the `APP_DATABASE_URL` connection string's credentials (`app_user:<that
-     password>@<host>...`).
+password>@<host>...`).
 
    `scripts/migrate.ts` reads `APP_USER_PASSWORD` and, specifically when it applies
    `0002_app_role.sql`, runs a parameterized `ALTER ROLE app_user WITH PASSWORD $1` — the password
@@ -171,16 +170,16 @@ service's actual URL is known, and re-check it any time the service is recreated
 
 6. **Set every environment variable** from Section B's list on the new web service:
 
-   | Variable              | Value                                                                                                             |
-   | ---------------------- | ------------------------------------------------------------------------------------------------------------------ |
-   | `NEXT_PUBLIC_APP_URL`  | The new web service's actual URL, once known (see the warning at the end of Section B — never the old one). |
-   | `NEXT_PUBLIC_APP_ENV`  | `production`                                                                                                      |
-   | `DATABASE_URL`         | From step 2, the owner/migration connection.                                                                     |
-   | `APP_DATABASE_URL`     | From step 2/3, the `app_user` connection.                                                                         |
-   | `APP_USER_PASSWORD`    | From step 3.                                                                                                      |
-   | `NODE_VERSION`         | The value in this repository's `.nvmrc` (currently `22`) — read it fresh from `main`, don't hardcode it here.    |
-   | `PORT`                 | Render's Node runtime injects this automatically for web services; `next start` honors it. Do not hand-set it unless troubleshooting a bind failure. |
-   | `SEED_STAFF_PASSWORD`  | Only needed if you intend to run `npm run db:seed` for validation (Section F) — a fresh password chosen at that time, at least 12 characters, never committed. Omit until then. |
+   | Variable              | Value                                                                                                                                                                           |
+   | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+   | `NEXT_PUBLIC_APP_URL` | The new web service's actual URL, once known (see the warning at the end of Section B — never the old one).                                                                     |
+   | `NEXT_PUBLIC_APP_ENV` | `production`                                                                                                                                                                    |
+   | `DATABASE_URL`        | From step 2, the owner/migration connection.                                                                                                                                    |
+   | `APP_DATABASE_URL`    | From step 2/3, the `app_user` connection.                                                                                                                                       |
+   | `APP_USER_PASSWORD`   | From step 3.                                                                                                                                                                    |
+   | `NODE_VERSION`        | The value in this repository's `.nvmrc` (currently `22`) — read it fresh from `main`, don't hardcode it here.                                                                   |
+   | `PORT`                | Render's Node runtime injects this automatically for web services; `next start` honors it. Do not hand-set it unless troubleshooting a bind failure.                            |
+   | `SEED_STAFF_PASSWORD` | Only needed if you intend to run `npm run db:seed` for validation (Section F) — a fresh password chosen at that time, at least 12 characters, never committed. Omit until then. |
 
 7. **Confirm the TLS connection again**, now as `app_user`, once its password is set (Section D
    applies the migration that sets it):
@@ -299,7 +298,7 @@ Expect `app_user`: `rolsuper = f`, `rolbypassrls = f`, `rolcanlogin = t`. Expect
 `rolsuper = f`, `rolbypassrls = f`, `rolcanlogin = f` (it is `NOLOGIN` — nothing connects as it
 directly; its two `SECURITY DEFINER` functions run as it internally, per ADR-0012/ADR-0013).
 
-**2. Row Level Security is enabled *and forced* on every tenant-scoped table:**
+**2. Row Level Security is enabled _and forced_ on every tenant-scoped table:**
 
 ```sql
 SELECT c.relname AS table_name, c.relrowsecurity AS rls_enabled, c.relforcerowsecurity AS rls_forced
@@ -312,7 +311,7 @@ ORDER BY c.relname;
 Expect **every table except `clinics` and `schema_migrations`** to show `rls_enabled = t` and
 `rls_forced = t`. `clinics` is expected to show `f`/`f` — it carries no `clinic_id` and no RLS by
 design, because a clinic must be able to find its own row before any `app.current_clinic_id`
-context exists (`docs/technical/01-database-schema.md`). Any *other* table showing `f` in either
+context exists (`docs/technical/01-database-schema.md`). Any _other_ table showing `f` in either
 column is a defect — stop (Section H).
 
 **3. `tenant_isolation` policies are present on every RLS-forced table:**
@@ -410,7 +409,7 @@ Skip straight to Section G if you don't need to validate the authenticated paths
    This creates exactly one demo clinic and one demo staff account
    (`demo-staff@example.test`, `receptionist` role — the lowest-privilege role with any API
    access), idempotently, and nothing else — no patients, conversations, or appointments
-   (`scripts/seed.ts`'s own module doc). This *is* the "deliberate synthetic staff identity" this
+   (`scripts/seed.ts`'s own module doc). This _is_ the "deliberate synthetic staff identity" this
    section is gated on.
 
 2. **Authenticated flow and tenant isolation:**
@@ -434,7 +433,7 @@ Skip straight to Section G if you don't need to validate the authenticated paths
 3. **P3-C staff reply, and practitioner cannot reply.** There is no HTTP route yet to create a
    conversation (P3-A's inbound-message path is internal only —
    `src/features/conversations`, no route file). To exercise `POST
-   /api/conversations/:id/messages`, insert one synthetic patient message directly, as
+/api/conversations/:id/messages`, insert one synthetic patient message directly, as
    `DATABASE_URL`, inside the demo clinic's tenant context — this is synthetic validation data
    under the same "never real, always cleaned up" rule as the seed's own account:
 

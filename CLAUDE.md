@@ -6,11 +6,9 @@ booked appointments instead of a human receptionist doing it manually.
 
 ## Status
 
-P1 is complete: Deliverables A (product), B (domain model), and C (technical design) are
-merged on main, and all eight ADRs (0001-0008) are Accepted. ADR-0009 (data residency
-and governing privacy regime) is Proposed and resolves issue #7: EU/EEA-only residency
-with GDPR as the sole governing regime, Gulf markets deferred. Next: P2 implementation,
-unblocked once ADR-0009 is Accepted and merged.
+P1, P2, P3-A, P3-B and P3-C are complete and merged on main. Production runs migrations 0001-0010: patient conversations, the staff conversation list and detail views, and staff replies to a conversation. ADRs 0001-0009 are Accepted; ADR-0009 (EU/EEA-only residency, GDPR as the sole governing regime, Gulf markets deferred) resolves issue #7. P3's acceptance criteria in docs/03-roadmap.md are now met. Next: P4 — Appointments.
+
+Two limitations are recorded rather than resolved. Production has no active staff identity by design, so the authenticated production click-through for P3-B and P3-C is deferred — a limitation of the validation surface, not an open implementation defect. docs/operations/production-rebuild-runbook.md is written but has never been executed or rehearsed.
 
 ## Hard rules
 

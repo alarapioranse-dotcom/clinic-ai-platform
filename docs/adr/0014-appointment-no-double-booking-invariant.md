@@ -2,7 +2,8 @@
 
 ## Status
 
-Proposed
+Accepted — 2026-09-12. Approved by the owner in a comment on
+[PR #52](https://github.com/alarapioranse-dotcom/clinic-ai-platform/pull/52).
 
 ## Date
 

@@ -20,7 +20,7 @@ governing which intervals may coexist for a practitioner. It states that resched
 the `rescheduled` state and assigns it a new interval," and that "the invariant is re-evaluated
 against that new interval exactly as it would be for a new booking"
 ([`0014-appointment-no-double-booking-invariant.md`](./0014-appointment-no-double-booking-invariant.md),
-Decision point 5). ADR-0014 deliberately leaves open *how* an appointment's interval is replaced
+Decision point 5). ADR-0014 deliberately leaves open _how_ an appointment's interval is replaced
 during a reschedule: its own Consequences section lists this among what "P4 migration design must
 still resolve separately"
 ([`0014-appointment-no-double-booking-invariant.md`](./0014-appointment-no-double-booking-invariant.md),

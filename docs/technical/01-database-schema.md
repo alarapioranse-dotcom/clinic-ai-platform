@@ -246,6 +246,12 @@ CREATE TABLE conversations (
   updated_at       timestamptz NOT NULL DEFAULT now(),
 
   CONSTRAINT conversations_id_key UNIQUE (id, clinic_id),
+  -- Added by db/migrations/0011_appointments.sql (P4 Slice 1), alongside the
+  -- UNIQUE above, not replacing it: the target `appointments (conversation_id,
+  -- patient_id) -> conversations (id, patient_id)` composite foreign key
+  -- requires this. patient_id is NOT NULL and id is already globally unique
+  -- via the PRIMARY KEY, so this addition rejects no existing row.
+  CONSTRAINT conversations_id_patient_key UNIQUE (id, patient_id),
   -- Same-clinic reference: a Conversation's Patient must belong to the same Clinic
   -- (docs/domain/04-relationships.md: "safe by construction").
   CONSTRAINT conversations_patient_same_clinic
@@ -401,27 +407,45 @@ invariant only needs to hold once the transaction is done, not between its indiv
 
 ## `appointments`
 
+**This section now matches the real migration** — `db/migrations/0011_appointments.sql` (P4
+Slice 1) — rather than only illustrating a future shape, per the charter's Definition of Done
+("Documentation updated in the same pull request"). The DDL below was corrected in that same PR
+from an earlier draft of this document that used `tsrange` against `timestamptz` columns, a
+pre-existing type mismatch; the real migration always used `tstzrange` (P4 addendum S1: "every
+timestamp column is `timestamptz`... without exception").
+
 ```sql
 CREATE TABLE appointments (
   id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   clinic_id        uuid NOT NULL REFERENCES clinics(id),
   patient_id       uuid NOT NULL,
-  service_id       uuid NOT NULL,
   practitioner_id  uuid NOT NULL,
+  conversation_id  uuid, -- nullable: an appointment need not originate from a conversation
   starts_at        timestamptz NOT NULL,
-  ends_at          timestamptz NOT NULL CHECK (ends_at > starts_at), -- TimeSlot invariant
+  ends_at          timestamptz NOT NULL,
   status           text NOT NULL DEFAULT 'booked'
-                     CHECK (status IN ('booked', 'cancelled', 'completed')),
+                     CHECK (status IN ('booked', 'rescheduled', 'cancelled', 'completed')),
   created_at       timestamptz NOT NULL DEFAULT now(),
+  updated_at       timestamptz NOT NULL DEFAULT now(), -- reschedule (ADR-0015) is UPDATE-in-place
+
+  CONSTRAINT appointments_ends_after_starts CHECK (ends_at > starts_at), -- TimeSlot invariant
 
   -- Same-clinic references for every part the Appointment is assembled from
-  -- (docs/domain/01-entities.md, Appointment #4 and #8).
+  -- (docs/domain/01-entities.md, Appointment #4 and #8). No `services` reference in P4
+  -- (P4 Design Gate, owner decision 6: no service catalog in P4).
   CONSTRAINT appointments_patient_same_clinic
     FOREIGN KEY (patient_id, clinic_id) REFERENCES patients (id, clinic_id),
-  CONSTRAINT appointments_service_same_clinic
-    FOREIGN KEY (service_id, clinic_id) REFERENCES services (id, clinic_id),
   CONSTRAINT appointments_practitioner_same_clinic
-    FOREIGN KEY (practitioner_id, clinic_id) REFERENCES staff_members (id, clinic_id)
+    FOREIGN KEY (practitioner_id, clinic_id) REFERENCES staff_members (id, clinic_id),
+
+  -- Structural "conversation belongs to the same patient" enforcement (P4 Design Gate, owner
+  -- decision 2), requiring `conversations` to expose `UNIQUE (id, patient_id)` in addition to its
+  -- existing `UNIQUE (id, clinic_id)`. MATCH SIMPLE (the default — no keyword needed): a NULL
+  -- conversation_id skips this check entirely, exactly the nullable case above requires (P4
+  -- addendum S2) — MATCH FULL would incorrectly reject every appointment booked without a
+  -- conversation.
+  CONSTRAINT appointments_conversation_same_patient
+    FOREIGN KEY (conversation_id, patient_id) REFERENCES conversations (id, patient_id)
 );
 
 ALTER TABLE appointments ENABLE ROW LEVEL SECURITY;
@@ -430,23 +454,31 @@ CREATE POLICY tenant_isolation ON appointments
   USING (clinic_id = current_setting('app.current_clinic_id', true)::uuid)
   WITH CHECK (clinic_id = current_setting('app.current_clinic_id', true)::uuid);
 
--- No-double-booking: the hard invariant, approved by Ahmed
--- (docs/domain/02-aggregates.md, Appointment aggregate invariant 1). Enforced atomically at the
--- database layer via an EXCLUDE constraint rather than an application-level "check then insert"
--- (which has a race window between the check and the insert under concurrent requests).
+-- No-double-booking: the hard invariant, approved by Ahmed (ADR-0014, Accepted) and refined by
+-- ADR-0015 (Accepted, reschedule is UPDATE-in-place). Enforced atomically at the database layer
+-- via an EXCLUDE constraint rather than an application-level "check then insert" (which has a
+-- race window between the check and the insert under concurrent requests). btree_gist is created
+-- in its own migration (P4 addendum S3), not in the already-shipped 0001_extensions.sql.
 CREATE EXTENSION IF NOT EXISTS btree_gist;
 
-ALTER TABLE appointments ADD CONSTRAINT no_double_booking
+-- The exclusion key includes clinic_id (P4 Design Gate, owner decision 3): the invariant is
+-- scoped to same clinic + same practitioner + overlapping active interval — practitioner_id alone
+-- is only unique per-clinic (staff_members_id_key is a composite key), not globally exclusive to
+-- one clinic. Active states are exactly 'booked' and 'rescheduled' (ADR-0014); 'cancelled' and
+-- 'completed' never conflict.
+ALTER TABLE appointments ADD CONSTRAINT appointments_no_double_booking
   EXCLUDE USING gist (
+    clinic_id WITH =,
     practitioner_id WITH =,
-    tsrange(starts_at, ends_at) WITH &&
-  ) WHERE (status <> 'cancelled');
+    tstzrange(starts_at, ends_at, '[)') WITH &&
+  ) WHERE (status IN ('booked', 'rescheduled'));
 ```
 
-- Three composite foreign keys, not one — B is explicit that Patient, Service, _and_ practitioner
-  StaffMember must all match the Appointment's own Clinic; each reference is checked
-  independently, structurally, rather than trusting that all three inputs happened to come from the
-  same clinic context in application code.
+- Two composite foreign keys tie the Appointment to its Clinic structurally — Patient and
+  practitioner StaffMember must both match the Appointment's own Clinic — plus a third composite
+  foreign key ties an optional Conversation to the same Patient; each reference is checked
+  independently, structurally, rather than trusting that these inputs happened to come from the
+  same clinic/patient context in application code.
 - `ends_at > starts_at` is the TimeSlot value object's own invariant
   ([`docs/domain/03-value-objects.md`](../domain/03-value-objects.md): "start strictly before
   end"), inlined directly since TimeSlot has no identity of its own and lives entirely inside the
@@ -455,11 +487,12 @@ ALTER TABLE appointments ADD CONSTRAINT no_double_booking
 - The `EXCLUDE` constraint is the one piece of DDL in this document doing genuine, non-optional
   work no application-level check could replace safely: two concurrent requests both attempting to
   book the same practitioner for overlapping times will, without this constraint, both pass an
-  application-level "is this slot free?" check before either has committed. `EXCLUDE ... WHERE
-(status <> 'cancelled')` rejects the second `INSERT`/`UPDATE` outright, atomically, which is
-  exactly "rejected outright at creation or reschedule time, never merely flagged as a warning"
-  (B, Appointment business rules) — a reschedule is modeled as `UPDATE` on `starts_at`/`ends_at`,
-  and the same constraint covers it without separate logic.
+  application-level "is this slot free?" check before either has committed. It rejects the second
+  `INSERT`/`UPDATE` outright, atomically, which is exactly "rejected outright at creation or
+  reschedule time, never merely flagged as a warning" (B, Appointment business rules) — a
+  reschedule is modeled as `UPDATE` on `starts_at`/`ends_at`/`status` in place (ADR-0015), and the
+  same constraint covers it without separate logic: there is only ever one row per appointment for
+  the constraint to compare against, so an appointment never conflicts with its own prior interval.
 - Reflects [`docs/domain/02-aggregates.md`](../domain/02-aggregates.md)'s own boundary note: this
   invariant's true consistency scope is "all Appointments for one Practitioner within one Clinic,"
   which is exactly what an `EXCLUDE` constraint checks — across rows, not within one row — unlike
@@ -468,6 +501,10 @@ ALTER TABLE appointments ADD CONSTRAINT no_double_booking
   API layer, not here: it's a rule about which requests are accepted, not about what a stored row
   may look like (a cancelled Appointment's row is perfectly valid data; it's the reschedule
   _action_ that's refused). See [`03-api-contracts.md`](./03-api-contracts.md).
+- No `available_slots` table and no clinic-local timezone architecture (P4 addendum S1):
+  availability is computed at read time from `clinics.working_hours` /
+  `staff_members.working_hours` plus this table's active rows — see
+  `src/features/appointments/schedule.ts`.
 
 ## `knowledge_documents`
 

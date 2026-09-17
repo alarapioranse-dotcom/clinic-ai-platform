@@ -143,9 +143,12 @@ describe('appointments: schema invariants', () => {
   it('allows the same overlapping interval in a different clinic (EXCLUDE key includes clinic_id)', async () => {
     const clinicA = await createTestClinic('ApptDiffClinicA');
     const clinicB = await createTestClinic('ApptDiffClinicB');
-    // staff_members.id is only unique per-clinic (0005_staff_members.sql's
-    // staff_members_id_key is (id, clinic_id)) — two independently created
-    // rows naturally have distinct ids, so this test proves clinic_id's
+    // staff_members.id is the table's PRIMARY KEY, so it's globally unique
+    // (not merely unique per clinic) — staff_members_id_key UNIQUE (id,
+    // clinic_id) is the composite target for the same-clinic composite-FK
+    // pattern used throughout this schema, not evidence id itself could
+    // collide across clinics. Two independently created rows naturally have
+    // distinct ids regardless, so this test still proves clinic_id's
     // presence in the exclusion key using two genuinely different
     // practitioner rows, same as any other cross-clinic isolation test here.
     const patientA = await createPatient(clinicA.id, { phoneNumber: '+201000001004' });

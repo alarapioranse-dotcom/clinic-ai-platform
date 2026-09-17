@@ -144,11 +144,14 @@ CREATE POLICY tenant_isolation ON appointments
 --
 -- Owner decision 3 (P4 Design Gate): the exclusion key includes clinic_id
 -- (not just practitioner_id) — the invariant is scoped to "same clinic +
--- same practitioner + overlapping active interval," matching
--- appointments_practitioner_same_clinic's own same-clinic scoping rather
--- than relying on practitioner_id alone being clinic-unique (it isn't:
--- staff_members.id is only unique per-clinic via the composite key, not
--- globally exclusive to one clinic by construction).
+-- same practitioner + overlapping active interval," expressed explicitly in
+-- terms of clinic_id rather than relying on staff_members.id's global
+-- uniqueness (id is that table's PRIMARY KEY, so it already is globally
+-- unique) to imply the same scoping incidentally. staff_members_id_key
+-- UNIQUE (id, clinic_id) exists for a different reason: it is the composite
+-- target appointments_practitioner_same_clinic (above) references, the same
+-- "safe by construction" composite-FK pattern used throughout this schema —
+-- not evidence that id itself could collide across clinics.
 --
 -- Active states are exactly 'booked' and 'rescheduled' (ADR-0014 points 2-4):
 -- 'cancelled' and 'completed' appointments never conflict with anything,

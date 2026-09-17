@@ -21,14 +21,17 @@
  *
  * Day keys are lowercase English weekday names. Each value is either a
  * `{ start, end }` window in "HH:MM" 24-hour form, or `null`/absent for a
- * closed day. Per P4's addendum S1 ("no clinic-local timezone architecture
- * in P4") and the owner's timezone decision (appointments store UTC
- * instants using the existing timestamptz convention), these start/end
- * times are interpreted directly as UTC wall-clock times — this slice does
- * not model an IANA zone per clinic or convert between clinic-local and UTC
- * time. A future ADR introducing clinic-local timezones would change how
- * these values are *interpreted*, not the column, table, or this JSON
- * shape.
+ * closed day. These start/end times are currently interpreted directly as
+ * UTC wall-clock times — this slice does not model an IANA zone per clinic
+ * or convert between clinic-local and UTC time.
+ *
+ * That UTC-literal reading is interim behavior, not settled design:
+ * `docs/adr/0016-clinic-working-hours-iana-timezone.md` (ADR-0016, Proposed
+ * — not yet Accepted) records that a clinic-local IANA-timezone
+ * interpretation is required instead, as a one-way-door decision this
+ * module's current behavior does not yet implement. Nothing here changes
+ * until ADR-0016 is Accepted and its implementation lands as its own,
+ * separately authorized change.
  */
 
 export type WeekdayKey =

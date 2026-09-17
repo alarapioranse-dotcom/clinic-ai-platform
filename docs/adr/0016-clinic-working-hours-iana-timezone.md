@@ -84,7 +84,7 @@ technical-design choice, and P4 must not depend on it without Ahmed's sign-off.
    already establish**: absolute instants stored as `timestamptz`, using the existing UTC/timestamptz
    convention every other timestamp column in this schema already follows
    (`db/migrations/0011_appointments.sql`). This ADR does not touch that — it only changes how a
-   clinic's *working-hours* wall-clock values are converted into those instants at availability-
+   clinic's _working-hours_ wall-clock values are converted into those instants at availability-
    computation time. An Appointment's stored interval is never itself clinic-local; only the
    `working_hours` input to computing candidate slots is.
 6. **Availability computation converts persisted clinic-local working hours into absolute
@@ -99,7 +99,7 @@ technical-design choice, and P4 must not depend on it without Ahmed's sign-off.
    - Practitioner-specific timezones. A practitioner's own `working_hours` override (already
      supported structurally by `staff_members.working_hours`, per
      [`docs/domain/01-entities.md`](../domain/01-entities.md)'s StaffMember #8) is interpreted in
-     the *same clinic's* IANA timezone, not a timezone of its own.
+     the _same clinic's_ IANA timezone, not a timezone of its own.
    - Timezone history (recording that a clinic changed its timezone at some point, or reinterpreting
      old data as of the timezone in effect when it was entered).
    - A custom timezone table, lookup service, or offset engine of any kind.
@@ -120,7 +120,7 @@ The question: today, `clinics.working_hours` is `NOT NULL DEFAULT '{}'::jsonb`
 to it — no application code path writes it yet (confirmed by inspection: no migration after 0003,
 and no `src/**` code before this PR, ever reads or writes `clinics.working_hours`). So this is not
 strictly a data-migration problem in the sense of reinterpreting existing wall-clock values — no real
-values exist yet in any deployed environment. It *is* a design question of what a newly required
+values exist yet in any deployed environment. It _is_ a design question of what a newly required
 timezone attribute defaults to (or whether it is required at all, with no default) for a clinic row
 that predates this ADR's schema change. Options, with their costs:
 
@@ -139,7 +139,7 @@ that predates this ADR's schema change. Options, with their costs:
 - **Nullable column, `NULL` meaning "not yet configured," with availability computation refusing to
   compute slots (or falling back to some explicitly-labeled behavior) until a clinic's owner sets
   it.** Avoids guessing, but changes P4's own availability contract (what `GET
-  /api/appointments/availability` returns for a clinic with no timezone set) — a decision with its
+/api/appointments/availability` returns for a clinic with no timezone set) — a decision with its
   own consequences this ADR does not evaluate.
 
 Whichever option is chosen, and the exact default/migration behavior for existing clinics, is

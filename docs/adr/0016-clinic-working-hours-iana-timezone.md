@@ -171,12 +171,12 @@ Harder:
 Forecloses:
 
 - Treating `working_hours` values as directly comparable UTC instants anywhere in the codebase going
-  forward — PR #54's current `schedule.ts` implementation and its header comment (which attributes
-  the UTC-literal interpretation to "P4's addendum S1... no clinic-local timezone architecture in
-  P4," and to a S1 addendum item that in fact only concerned `timestamptz`/`tstzrange` for
-  `appointments`, not `working_hours`) must be corrected once this ADR is Accepted — tracked as a
-  known documentation inaccuracy in PR #54, not fixed by this ADR itself (see that PR's own report
-  for the exact locations).
+  forward — PR #54's current `schedule.ts` implementation reads them that way today. Accepting this
+  ADR records that the reading is wrong; acceptance does not, by itself, authorize editing PR #54,
+  its branch, or any other code to correct it. Implementing this decision — correcting that reading,
+  adding the clinic-timezone attribute, and everything else Decision item 6 requires — is a separate
+  step requiring its own separate authorization after acceptance; this ADR neither performs nor
+  pre-approves it (see PR #54's own report for the exact locations of the affected comments).
 
 ## Alternatives considered
 

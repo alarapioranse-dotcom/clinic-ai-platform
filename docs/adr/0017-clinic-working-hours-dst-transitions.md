@@ -73,59 +73,76 @@ be merged while this ADR remains Proposed.
 
 ## Decision
 
-**Not decided by this record.** This ADR exists to put the DST gap/overlap question in front of the
-owner for a ruling, per charter §10's one-way-door process — it does not select an answer itself. The
-options below are presented as alternatives, not a recommendation. Once the owner rules on this
-(recorded the same way ADR-0016 was: a human comment on this ADR's pull request), a follow-up edit to
-this ADR's Decision section — or a superseding record — states the actual rule, and only then is
-implementing it (beyond PR #56's current provisional behavior) authorized.
+Owner ruling, recorded as a human comment on
+[PR #57](https://github.com/alarapioranse-dotcom/clinic-ai-platform/pull/57), per charter §10's
+one-way-door process.
 
-At minimum, the ruling needs to independently settle, for each of the gap case and the overlap case
-(they need not receive the same answer):
+**Decision item 1 — must the two cases behave the same way?** They get the same outcome, but for two
+separate stated reasons, stated explicitly below rather than collapsed into a single rule.
 
-1. Whether the two cases are even required to behave the same way as each other.
-2. What a patient- or staff-facing availability read returns for a working-hours window whose
-   boundary falls in the affected range on the affected date — see Alternatives below.
-3. Whether this is purely a read-time/availability-computation concern, or whether
-   `clinics.working_hours` / `staff_members.working_hours` configuration itself should be validated
-   or rejected at write time for containing a boundary that could someday coincide with a transition
-   (note: DST transition dates are typically not the same every year and are set by each country's
-   own tzdata rule, so a window that is safe this year is not guaranteed to stay safe in a future
-   year without re-checking).
+**Decision item 2 — what an availability read returns:**
+
+- **Spring-forward gap.** A working-hours window whose `start` or `end` falls in the nonexistent
+  range produces no availability for that window on that date. A wall-clock time that does not occur
+  cannot be offered.
+- **Fall-back overlap.** A working-hours window whose `start` or `end` falls in the ambiguous range
+  produces no availability for that window on that date. Choosing the earlier or the later occurrence
+  would invent a rule the clinic never agreed to.
+
+This is **Alternative 1 ("fail closed")**, below, for both cases. Alternatives 3 and 4 are rejected:
+3 invents clinic intent that nothing records, and 4 reintroduces exactly the silent wrongness
+ADR-0016 exists to prevent.
+
+**Decision item 3 — read-time or write-time?** Read-time only. Alternative 2 is rejected: transition
+dates are set per country by tzdata and are not reliably known in advance, so a write-time check
+passes this year and breaks next year with no code change. It is false safety, and it turns an
+availability read into a hard failure for configuration that is valid every other day of the year.
+
+**Scope note for the record:** this platform serves EU/EEA clinics only
+([ADR-0009](./0009-data-residency.md)). EU transitions occur at 02:00–03:00 local, so ordinary clinic
+hours are unaffected; the practical cost of failing closed is near zero.
 
 ## Consequences
 
-Deferred until the Decision section above is filled in — the consequences of each alternative below
-differ enough (silently narrower availability vs. a hard configuration error vs. shifted appointment
-times) that stating them generically here would not be meaningful. This section is completed as part
-of accepting this ADR.
+Condition attached to accepting Alternative 1 (owner ruling, PR #57): this narrowing has to be
+observable — the system must be able to distinguish "no availability because of a DST transition"
+from "no availability because the clinic is closed." Implementation of that observability is not in
+[PR #56](https://github.com/alarapioranse-dotcom/clinic-ai-platform/pull/56)'s scope — it is recorded
+here as a named follow-up, not as silent behavior.
 
 ## Alternatives considered
 
-No alternative is selected. Recorded here as the candidate answers found while drafting this ADR, for
-the owner to choose among, combine, or reject in favor of something else entirely:
+Recorded here as the candidate answers found while drafting this ADR. Marked below per the owner
+ruling on [PR #57](https://github.com/alarapioranse-dotcom/clinic-ai-platform/pull/57):
 
-- **No availability for the affected window on the affected date ("fail closed").** What PR #56
-  currently, provisionally, does. Simple, and consistent with `getWindowForDate`'s existing
-  fail-closed handling of actually-malformed data — but conflating "malformed data" with "well-formed
-  data that happens to name an undefined or double-valued moment" is exactly the framing this ADR
-  exists to not assume silently. A clinic offering, say, `00:00`–`08:00` hours would lose that entire
-  window on one specific date a year, with nothing in the product surfacing why.
-- **Reject the configuration outright.** Validate `working_hours` at write time (or at
-  availability-computation time, returning an error rather than an empty result) whenever a boundary
-  could coincide with a known or future transition, forcing the clinic (or its administrator) to pick
-  different hours. Removes the silent-narrowing problem above, but requires deciding how far in
-  advance transitions must be knowable (tzdata does not always have next year's exact dates yet — see
-  Decision item 3), and turns an availability read into a potential hard failure for configuration
-  that was valid every other day of the year.
-- **Normalize or shift the boundary to the nearest valid instant.** E.g., a nonexistent start time
-  snaps forward to the first instant that exists after the gap; an ambiguous time resolves to a fixed
-  choice (always the earlier occurrence, or always the later one). Preserves the window's approximate
+- **Alternative 1 — SELECTED (owner ruling, PR #57).** No availability for the affected window on the
+  affected date ("fail closed"). What PR #56 currently, provisionally, does. Simple, and consistent
+  with `getWindowForDate`'s existing fail-closed handling of actually-malformed data — but conflating
+  "malformed data" with "well-formed data that happens to name an undefined or double-valued moment"
+  is exactly the framing this ADR exists to not assume silently. A clinic offering, say,
+  `00:00`–`08:00` hours would lose that entire window on one specific date a year, with nothing in the
+  product surfacing why.
+- **Alternative 2 — REJECTED (owner ruling, PR #57): transition dates are set per country by tzdata
+  and are not reliably known in advance, so a write-time check passes this year and breaks next year
+  with no code change; it is false safety, and it turns an availability read into a hard failure for
+  configuration that is valid every other day of the year.** Reject the configuration outright.
+  Validate `working_hours` at write time (or at availability-computation time, returning an error
+  rather than an empty result) whenever a boundary could coincide with a known or future transition,
+  forcing the clinic (or its administrator) to pick different hours. Removes the silent-narrowing
+  problem above, but requires deciding how far in advance transitions must be knowable (tzdata does
+  not always have next year's exact dates yet — see Decision item 3), and turns an availability read
+  into a potential hard failure for configuration that was valid every other day of the year.
+- **Alternative 3 — REJECTED (owner ruling, PR #57): invents clinic intent that nothing records.**
+  Normalize or shift the boundary to the nearest valid instant. E.g., a nonexistent start time snaps
+  forward to the first instant that exists after the gap; an ambiguous time resolves to a fixed choice
+  (always the earlier occurrence, or always the later one). Preserves the window's approximate
   duration and never silently loses the whole day, but invents a specific business rule about what a
   clinic "meant" that nothing today records the clinic having agreed to, and picking "earlier" vs.
   "later" for the overlap case is itself arbitrary without a stated rationale.
-- **Do nothing differently per date; let the instant resolve however the single-offset conversion
-  happens to land.** I.e., drop the ambiguity/nonexistence detection entirely and let whichever offset
+- **Alternative 4 — REJECTED (owner ruling, PR #57): reintroduces exactly the silent wrongness
+  ADR-0016 exists to prevent.** Do nothing differently per date; let the instant resolve however the
+  single-offset conversion happens to land. I.e., drop the ambiguity/nonexistence detection entirely
+  and let whichever offset
   a naive conversion picks stand, even if it silently produces a wrong-by-one-hour or a
   doesn't-really-exist instant. Simplest to implement, but reintroduces exactly the kind of silent,
   invisible-until-real-data-exists wrongness ADR-0016's own Context section named as the reason a

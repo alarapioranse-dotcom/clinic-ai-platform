@@ -12,6 +12,12 @@ import {
   AppointmentConflictError,
 } from '@/features/appointments';
 import { createTestClinic, createTestStaffMember, setClinicWorkingHours } from '../../fixtures';
+import {
+  findNextDstTransitionOfKind,
+  rawOffsetMinutes,
+  rawWallClock,
+  weekdayKeyOf,
+} from '../../dst-test-helpers';
 
 /**
  * Feature-level coverage for `src/features/appointments` (roadmap P4 Slice
@@ -432,41 +438,88 @@ describe('getAvailableSlots', () => {
   });
 
   it('resolves the same clinic-local working hours to a different UTC offset on either side of a real DST transition (Africa/Cairo)', async () => {
-    const clinic = await createTestClinic('AvailDstClinic', 'Africa/Cairo');
+    // Discovered dynamically, not pinned to a specific calendar date frozen at authoring time --
+    // see ../../dst-test-helpers's own header comment for why (a real DST rule change, or a
+    // different Node/ICU tzdata snapshot on CI, could otherwise silently break this test).
+    const ZONE = 'Africa/Cairo';
+    const yearStart = Date.UTC(2026, 0, 1);
+    const gap = findNextDstTransitionOfKind(yearStart, ZONE, 'gap');
+    const beforeDay = rawWallClock(gap.lastBeforeMs, ZONE);
+    const afterDay = rawWallClock(gap.firstAfterMs, ZONE);
+    const pad2 = (n: number) => String(n).padStart(2, '0');
+    const dateStr = (wc: { year: number; month: number; day: number }) =>
+      `${wc.year}-${pad2(wc.month)}-${pad2(wc.day)}`;
+
+    const clinic = await createTestClinic('AvailDstClinic', ZONE);
     await setClinicWorkingHours(clinic.id, {
-      thursday: { start: '09:00', end: '10:00' }, // 2026-04-23 is a Thursday (standard time, UTC+2)
-      saturday: { start: '09:00', end: '10:00' }, // 2026-04-25 is a Saturday (daylight time, UTC+3)
+      [weekdayKeyOf(beforeDay)]: { start: '09:00', end: '10:00' },
+      [weekdayKeyOf(afterDay)]: { start: '09:00', end: '10:00' },
     });
     const practitioner = await createTestStaffMember(clinic.id, 'AvailDstClinic', {
       role: 'practitioner',
     });
 
-    const beforeDst = await getAvailableSlots(clinic.id, practitioner.id, '2026-04-23', 60);
-    const afterDst = await getAvailableSlots(clinic.id, practitioner.id, '2026-04-25', 60);
+    const beforeOffset = rawOffsetMinutes(
+      Date.UTC(beforeDay.year, beforeDay.month - 1, beforeDay.day, 9, 0, 0),
+      ZONE,
+    );
+    const afterOffset = rawOffsetMinutes(
+      Date.UTC(afterDay.year, afterDay.month - 1, afterDay.day, 9, 0, 0),
+      ZONE,
+    );
+    expect(afterOffset).not.toBe(beforeOffset); // the property this test exists to prove
+
+    const beforeDst = await getAvailableSlots(clinic.id, practitioner.id, dateStr(beforeDay), 60);
+    const afterDst = await getAvailableSlots(clinic.id, practitioner.id, dateStr(afterDay), 60);
 
     expect(beforeDst).toEqual([
       {
-        startsAt: new Date('2026-04-23T07:00:00.000Z'),
-        endsAt: new Date('2026-04-23T08:00:00.000Z'),
+        startsAt: new Date(
+          Date.UTC(beforeDay.year, beforeDay.month - 1, beforeDay.day, 9, 0, 0) -
+            beforeOffset * 60_000,
+        ),
+        endsAt: new Date(
+          Date.UTC(beforeDay.year, beforeDay.month - 1, beforeDay.day, 10, 0, 0) -
+            beforeOffset * 60_000,
+        ),
       },
     ]);
     expect(afterDst).toEqual([
       {
-        startsAt: new Date('2026-04-25T06:00:00.000Z'),
-        endsAt: new Date('2026-04-25T07:00:00.000Z'),
+        startsAt: new Date(
+          Date.UTC(afterDay.year, afterDay.month - 1, afterDay.day, 9, 0, 0) - afterOffset * 60_000,
+        ),
+        endsAt: new Date(
+          Date.UTC(afterDay.year, afterDay.month - 1, afterDay.day, 10, 0, 0) -
+            afterOffset * 60_000,
+        ),
       },
     ]);
   });
 
   it('returns no slots for a date whose window falls inside a DST spring-forward gap', async () => {
-    const clinic = await createTestClinic('AvailDstGap', 'Africa/Cairo');
-    // 2026-04-24 is a Friday; Cairo's local clock skips 00:00-01:00 that day.
-    await setClinicWorkingHours(clinic.id, { friday: { start: '00:15', end: '01:15' } });
+    const ZONE = 'Africa/Cairo';
+    const yearStart = Date.UTC(2026, 0, 1);
+    const gap = findNextDstTransitionOfKind(yearStart, ZONE, 'gap');
+    const gapDay = rawWallClock(gap.firstAfterMs, ZONE);
+    const pad2 = (n: number) => String(n).padStart(2, '0');
+    const dateStr = `${gapDay.year}-${pad2(gapDay.month)}-${pad2(gapDay.day)}`;
+    // The gap is [gapDay 00:00, gapDay <firstAfter time>) -- pick a window whose start lands
+    // inside it (nonexistent) and whose end lands comfortably after it, whatever those actually
+    // are in this tzdata snapshot, rather than fixed "00:15"/"01:15" literals.
+    const gapEndMinutes = gapDay.hour * 60 + gapDay.minute;
+    const startMinutes = Math.floor(gapEndMinutes / 2);
+    const endMinutes = gapEndMinutes + 60;
+    const start = `${pad2(Math.floor(startMinutes / 60))}:${pad2(startMinutes % 60)}`;
+    const end = `${pad2(Math.floor(endMinutes / 60))}:${pad2(endMinutes % 60)}`;
+
+    const clinic = await createTestClinic('AvailDstGap', ZONE);
+    await setClinicWorkingHours(clinic.id, { [weekdayKeyOf(gapDay)]: { start, end } });
     const practitioner = await createTestStaffMember(clinic.id, 'AvailDstGap', {
       role: 'practitioner',
     });
 
-    const slots = await getAvailableSlots(clinic.id, practitioner.id, '2026-04-24', 30);
+    const slots = await getAvailableSlots(clinic.id, practitioner.id, dateStr, 30);
 
     expect(slots).toEqual([]);
   });

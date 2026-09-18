@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import {
   computeAvailableSlots,
   dayBoundsUtc,
@@ -8,6 +8,12 @@ import {
   localWindowToUtcInstants,
 } from '@/features/appointments';
 import type { WorkingHoursJson } from '@/features/appointments';
+import {
+  findNextDstTransitionOfKind,
+  rawOffsetMinutes,
+  rawWallClock,
+  type DstTransition,
+} from '../../dst-test-helpers';
 
 /**
  * Pure-function coverage for `src/features/appointments/schedule.ts`
@@ -18,14 +24,16 @@ import type { WorkingHoursJson } from '@/features/appointments';
  * availability computation is kept separate from schedule/appointment
  * persistence).
  *
- * Africa/Cairo's real DST rule, as this platform's own tzdata reports it
- * (verified directly against Node's ICU before writing these dates, not
- * guessed): standard time UTC+2, daylight time UTC+3, switching 2026-04-23
- * 22:00 UTC (spring forward: local 00:00-00:59 on 2026-04-24 does not
- * exist) and 2026-10-29 21:00 UTC (fall back: local 23:00-23:59 on
- * 2026-10-29 occurs twice). Asia/Dubai carries no DST at all (constant
- * UTC+4) — used below as the "does not observe DST" comparison ADR-0016's
- * implementation task calls for.
+ * The DST tests below use Africa/Cairo (a real zone that observes DST) and
+ * Asia/Dubai (a real zone that does not, constant UTC+4) as ADR-0016's
+ * implementation task calls for. They deliberately do NOT hardcode which
+ * calendar dates Africa/Cairo's transitions fall on: DST rules are not
+ * fixed (Egypt's own policy has changed more than once), and a version
+ * shift in whatever tzdata a given CI run's Node/ICU ships with could move
+ * those dates without any code change here. Instead, `../../dst-test-helpers`
+ * discovers the actual transition in whatever tzdata is running the test,
+ * using Intl calls independent of `schedule.ts`'s own offset-resolution
+ * code (see that file's own header comment for why independence matters).
  */
 describe('dayBoundsUtc', () => {
   it('returns UTC midnight-to-midnight for a valid date', () => {
@@ -114,57 +122,6 @@ describe('localWindowToUtcInstants', () => {
     });
   });
 
-  it('converts a clinic in standard time (Africa/Cairo, UTC+2, before the spring DST transition)', () => {
-    const instants = localWindowToUtcInstants(
-      { start: '09:00', end: '17:00' },
-      '2026-04-23',
-      'Africa/Cairo',
-    );
-    expect(instants).toEqual({
-      startsAt: new Date('2026-04-23T07:00:00.000Z'),
-      endsAt: new Date('2026-04-23T15:00:00.000Z'),
-    });
-  });
-
-  it('resolves the same clinic-local wall-clock window to a different UTC offset once DST is in effect (Africa/Cairo, UTC+3)', () => {
-    const instants = localWindowToUtcInstants(
-      { start: '09:00', end: '17:00' },
-      '2026-04-25',
-      'Africa/Cairo',
-    );
-    expect(instants).toEqual({
-      startsAt: new Date('2026-04-25T06:00:00.000Z'),
-      endsAt: new Date('2026-04-25T14:00:00.000Z'),
-    });
-  });
-
-  it('returns null when the window start falls inside a spring-forward gap (2026-04-24 00:00-01:00 does not exist in Africa/Cairo)', () => {
-    expect(
-      localWindowToUtcInstants({ start: '00:30', end: '02:00' }, '2026-04-24', 'Africa/Cairo'),
-    ).toBeNull();
-  });
-
-  it('returns null when the window end falls inside a fall-back overlap (2026-10-29 23:00-24:00 occurs twice in Africa/Cairo)', () => {
-    expect(
-      localWindowToUtcInstants({ start: '22:00', end: '23:30' }, '2026-10-29', 'Africa/Cairo'),
-    ).toBeNull();
-  });
-
-  it('resolves normally on either side of a DST transition day, outside the transition hour itself', () => {
-    expect(
-      localWindowToUtcInstants({ start: '09:00', end: '10:00' }, '2026-04-24', 'Africa/Cairo'),
-    ).toEqual({
-      startsAt: new Date('2026-04-24T06:00:00.000Z'),
-      endsAt: new Date('2026-04-24T07:00:00.000Z'),
-    });
-    expect(
-      localWindowToUtcInstants({ start: '09:00', end: '10:00' }, '2026-10-29', 'Africa/Cairo'),
-    ).toEqual({
-      startsAt: new Date('2026-10-29T06:00:00.000Z'),
-      endsAt: new Date('2026-10-29T07:00:00.000Z'),
-    });
-  });
-
   it('returns null for a malformed window (start not before end), same as getWindowForDate', () => {
     expect(
       localWindowToUtcInstants({ start: '17:00', end: '09:00' }, '2026-09-17', 'Africa/Cairo'),
@@ -175,6 +132,137 @@ describe('localWindowToUtcInstants', () => {
     expect(
       localWindowToUtcInstants({ start: '09:00', end: '17:00' }, '2026-09-17', 'Not/AZone'),
     ).toBeNull();
+  });
+});
+
+/**
+ * DST-transition behavior, discovered dynamically per `../../dst-test-helpers`
+ * rather than asserted against dates frozen at authoring time. Expected UTC
+ * instants are computed here from `rawOffsetMinutes`/`rawWallClock` (a
+ * separate Intl code path from `schedule.ts`'s own), never by calling
+ * `localWindowToUtcInstants`/`resolveZonedInstant` to produce their own
+ * expected value — asserting a function's output equals itself would prove
+ * nothing.
+ */
+describe('localWindowToUtcInstants / computeAvailableSlots across a real DST transition (Africa/Cairo)', () => {
+  const ZONE = 'Africa/Cairo';
+  let gap: DstTransition;
+  let overlap: DstTransition;
+
+  beforeAll(() => {
+    const yearStart = Date.UTC(2026, 0, 1);
+    gap = findNextDstTransitionOfKind(yearStart, ZONE, 'gap');
+    overlap = findNextDstTransitionOfKind(yearStart, ZONE, 'overlap');
+    // Sanity on the discovery itself, independent of anything schedule.ts does.
+    expect(gap.afterOffsetMinutes).toBeGreaterThan(gap.beforeOffsetMinutes);
+    expect(overlap.afterOffsetMinutes).toBeLessThan(overlap.beforeOffsetMinutes);
+  });
+
+  function pad2(n: number): string {
+    return String(n).padStart(2, '0');
+  }
+  function dateStr(wc: { year: number; month: number; day: number }): string {
+    return `${wc.year}-${pad2(wc.month)}-${pad2(wc.day)}`;
+  }
+  function expectedInstant(
+    wc: { year: number; month: number; day: number },
+    hour: number,
+    minute: number,
+    offsetMinutes: number,
+  ): Date {
+    return new Date(
+      Date.UTC(wc.year, wc.month - 1, wc.day, hour, minute, 0) - offsetMinutes * 60_000,
+    );
+  }
+
+  it('resolves the same clinic-local wall-clock window to different UTC offsets on either side of the discovered transition', () => {
+    const beforeDay = rawWallClock(gap.lastBeforeMs, ZONE); // a day still fully on the pre-transition offset
+    const afterDay = rawWallClock(gap.firstAfterMs, ZONE); // a day already fully on the post-transition offset (this window, 09:00-17:00, is nowhere near the transition hour itself)
+
+    const beforeOffset = rawOffsetMinutes(
+      Date.UTC(beforeDay.year, beforeDay.month - 1, beforeDay.day, 9, 0, 0),
+      ZONE,
+    );
+    const afterOffset = rawOffsetMinutes(
+      Date.UTC(afterDay.year, afterDay.month - 1, afterDay.day, 9, 0, 0),
+      ZONE,
+    );
+    expect(afterOffset).not.toBe(beforeOffset); // the property this test exists to prove
+
+    expect(
+      localWindowToUtcInstants({ start: '09:00', end: '17:00' }, dateStr(beforeDay), ZONE),
+    ).toEqual({
+      startsAt: expectedInstant(beforeDay, 9, 0, beforeOffset),
+      endsAt: expectedInstant(beforeDay, 17, 0, beforeOffset),
+    });
+    expect(
+      localWindowToUtcInstants({ start: '09:00', end: '17:00' }, dateStr(afterDay), ZONE),
+    ).toEqual({
+      startsAt: expectedInstant(afterDay, 9, 0, afterOffset),
+      endsAt: expectedInstant(afterDay, 17, 0, afterOffset),
+    });
+  });
+
+  it('returns null when the window start falls inside the discovered spring-forward gap (end stays outside it)', () => {
+    const gapDay = rawWallClock(gap.firstAfterMs, ZONE);
+    // The gap is [gapDay 00:00, gapDay <firstAfter time>) -- derive a midpoint minute inside it
+    // (nonexistent) for `start`, and a minute comfortably after it (valid) for `end`, whatever
+    // those actually are in this tzdata snapshot, rather than fixed "00:30"/"02:00" literals.
+    const gapEndMinutes = gapDay.hour * 60 + gapDay.minute;
+    const startMinutes = Math.floor(gapEndMinutes / 2); // inside the gap
+    const endMinutes = gapEndMinutes + 60; // comfortably after the gap
+    const start = `${pad2(Math.floor(startMinutes / 60))}:${pad2(startMinutes % 60)}`;
+    const end = `${pad2(Math.floor(endMinutes / 60))}:${pad2(endMinutes % 60)}`;
+
+    expect(localWindowToUtcInstants({ start, end }, dateStr(gapDay), ZONE)).toBeNull();
+    expect(computeAvailableSlots({ start, end }, dateStr(gapDay), ZONE, 15, [])).toEqual([]);
+  });
+
+  it('returns null when the window end falls inside the discovered fall-back overlap (start stays outside it)', () => {
+    const before = rawWallClock(overlap.lastBeforeMs, ZONE);
+    const after = rawWallClock(overlap.firstAfterMs, ZONE);
+    expect(before.year).toBe(after.year);
+    expect(before.month).toBe(after.month);
+    expect(before.day).toBe(after.day);
+
+    // The overlap is [after HH:MM, before HH:MM] inclusive (both offsets produce that wall time).
+    // `start` is derived a full hour before it opens (unambiguous); `end` lands inside it.
+    const overlapStartMinutes = after.hour * 60 + after.minute;
+    const overlapEndMinutesInclusive = before.hour * 60 + before.minute;
+    const startMinutes = Math.max(0, overlapStartMinutes - 60);
+    const endMinutes = Math.floor((overlapStartMinutes + overlapEndMinutesInclusive) / 2);
+    const start = `${pad2(Math.floor(startMinutes / 60))}:${pad2(startMinutes % 60)}`;
+    const end = `${pad2(Math.floor(endMinutes / 60))}:${pad2(endMinutes % 60)}`;
+
+    expect(localWindowToUtcInstants({ start, end }, dateStr(after), ZONE)).toBeNull();
+    expect(computeAvailableSlots({ start, end }, dateStr(after), ZONE, 15, [])).toEqual([]);
+  });
+
+  it('resolves normally on the gap/overlap calendar dates, outside the transition range itself', () => {
+    const gapDay = rawWallClock(gap.firstAfterMs, ZONE);
+    const overlapDay = rawWallClock(overlap.firstAfterMs, ZONE);
+
+    const gapDayOffset = rawOffsetMinutes(
+      Date.UTC(gapDay.year, gapDay.month - 1, gapDay.day, 9, 0, 0),
+      ZONE,
+    );
+    const overlapDayOffset = rawOffsetMinutes(
+      Date.UTC(overlapDay.year, overlapDay.month - 1, overlapDay.day, 9, 0, 0),
+      ZONE,
+    );
+
+    expect(
+      localWindowToUtcInstants({ start: '09:00', end: '10:00' }, dateStr(gapDay), ZONE),
+    ).toEqual({
+      startsAt: expectedInstant(gapDay, 9, 0, gapDayOffset),
+      endsAt: expectedInstant(gapDay, 10, 0, gapDayOffset),
+    });
+    expect(
+      localWindowToUtcInstants({ start: '09:00', end: '10:00' }, dateStr(overlapDay), ZONE),
+    ).toEqual({
+      startsAt: expectedInstant(overlapDay, 9, 0, overlapDayOffset),
+      endsAt: expectedInstant(overlapDay, 10, 0, overlapDayOffset),
+    });
   });
 });
 
@@ -227,12 +315,6 @@ describe('computeAvailableSlots', () => {
 
   it('returns an empty list for a closed day (null window)', () => {
     expect(computeAvailableSlots(null, '2026-09-17', 'UTC', 30, [])).toEqual([]);
-  });
-
-  it('returns an empty list when the window cannot be resolved to instants (DST gap)', () => {
-    expect(
-      computeAvailableSlots({ start: '00:30', end: '02:00' }, '2026-04-24', 'Africa/Cairo', 30, []),
-    ).toEqual([]);
   });
 
   it('excludes a slot that overlaps a busy interval', () => {

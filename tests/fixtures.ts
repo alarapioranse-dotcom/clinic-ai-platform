@@ -3,6 +3,7 @@ import { Client } from 'pg';
 import { withTenantContext } from '@/lib/db';
 import { getDatabaseUrl } from '@/lib/env';
 import { hashPassword } from '@/features/auth';
+import type { WorkingHoursJson } from '@/features/appointments';
 
 /**
  * Test-only fixture data — no real clinic or patient data, per the hard
@@ -60,6 +61,8 @@ export interface CreateTestStaffMemberOptions {
   status?: TestStaffMember['status'];
   password?: string;
   email?: string;
+  /** Per-practitioner WorkingHours override (roadmap P4 Slice 1) — see `src/features/appointments/schedule.ts`. Omitted = NULL = clinic default applies. */
+  workingHours?: WorkingHoursJson;
 }
 
 export async function createTestStaffMember(
@@ -76,11 +79,42 @@ export async function createTestStaffMember(
 
   await withTenantContext(clinicId, (client) =>
     client.query(
-      `INSERT INTO staff_members (id, clinic_id, email, password_hash, role, status)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [id, clinicId, email, passwordHash, role, status],
+      `INSERT INTO staff_members (id, clinic_id, email, password_hash, role, status, working_hours)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        id,
+        clinicId,
+        email,
+        passwordHash,
+        role,
+        status,
+        options.workingHours ? JSON.stringify(options.workingHours) : null,
+      ],
     ),
   );
 
   return { id, clinicId, email, role, status, password };
+}
+
+/**
+ * Sets a test clinic's default WorkingHours (roadmap P4 Slice 1). Runs over
+ * the admin/owner connection, same as `createTestClinic` — `app_user` has
+ * only column-restricted SELECT on `clinics` (0003_clinics.sql,
+ * 0008_revoke_clinics_insert.sql: INSERT revoked, UPDATE never granted), so
+ * a test fixture cannot write this through the ordinary app connection.
+ */
+export async function setClinicWorkingHours(
+  clinicId: string,
+  workingHours: WorkingHoursJson,
+): Promise<void> {
+  const admin = new Client({ connectionString: getDatabaseUrl() });
+  await admin.connect();
+  try {
+    await admin.query('UPDATE clinics SET working_hours = $1 WHERE id = $2', [
+      JSON.stringify(workingHours),
+      clinicId,
+    ]);
+  } finally {
+    await admin.end();
+  }
 }

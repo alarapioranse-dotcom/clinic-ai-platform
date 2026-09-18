@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/Button';
+import { BookAppointment } from './BookAppointment';
 
 interface MessageRow {
   id: string;
@@ -34,6 +35,11 @@ type DetailState =
  * /api/conversations/:id/messages` enforces this independently and is the
  * actual authorization boundary. */
 const REPLY_ROLES = new Set(['owner', 'admin', 'receptionist']);
+
+/** Same matrix as `POST /api/appointments` (roadmap P4 Slice 1) — booking is
+ * a receptionist/staff action, not a practitioner one (ADR-0004). Same
+ * "convenience only" caveat as REPLY_ROLES above. */
+const BOOK_ROLES = new Set(['owner', 'admin', 'receptionist']);
 
 type ReplyState = { status: 'idle' | 'sending' | 'error' };
 
@@ -196,6 +202,13 @@ export default function ConversationDetailPage() {
                 )}
               </div>
             </div>
+          )}
+
+          {role !== null && BOOK_ROLES.has(role) && (
+            <BookAppointment
+              conversationId={state.detail.conversation.id}
+              patientId={state.detail.conversation.patientId}
+            />
           )}
         </div>
       )}

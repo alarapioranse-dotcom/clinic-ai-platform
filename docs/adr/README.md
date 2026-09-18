@@ -20,6 +20,7 @@ decisions don't need one.
 | [0011](./0011-regulatory-scope-boundaries.md)               | Regulatory scope boundaries                                     | Accepted |
 | [0012](./0012-authentication-bootstrap-security-definer.md) | Authentication bootstrap via SECURITY DEFINER lookup            | Accepted |
 | [0013](./0013-auth-bootstrap-rls-without-bypassrls.md)      | Auth bootstrap RLS access via an explicit policy, not BYPASSRLS | Proposed |
+| [0017](./0017-clinic-working-hours-dst-transitions.md)      | Clinic working-hours behavior at DST gap/overlap transitions    | Proposed |
 
 0010 is intentionally unassigned — reserved for the audit-log erasure strategy named as a follow-up
 in [ADR-0009](./0009-data-residency.md), not yet written.

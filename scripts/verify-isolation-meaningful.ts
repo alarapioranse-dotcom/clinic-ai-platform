@@ -55,9 +55,9 @@ async function main(): Promise<void> {
     // Fixture: two clinics, one patient each (test-only data, no real
     // patients or clinics — charter §7 / hard rule).
     await admin.query(
-      `INSERT INTO clinics (id, name, owner_email, contact_email)
-       VALUES ($1, 'Verify Clinic A', 'a@example.test', 'a@example.test'),
-              ($2, 'Verify Clinic B', 'b@example.test', 'b@example.test')
+      `INSERT INTO clinics (id, name, owner_email, contact_email, timezone)
+       VALUES ($1, 'Verify Clinic A', 'a@example.test', 'a@example.test', 'UTC'),
+              ($2, 'Verify Clinic B', 'b@example.test', 'b@example.test', 'UTC')
        ON CONFLICT (id) DO NOTHING`,
       [clinicAId, clinicBId],
     );

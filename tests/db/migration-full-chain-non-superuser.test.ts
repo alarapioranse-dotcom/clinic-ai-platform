@@ -207,7 +207,7 @@ describe('full migration chain (0001-0008) against a non-superuser, non-BYPASSRL
     });
     await scratchAdmin.connect();
     await scratchAdmin.query(
-      `INSERT INTO clinics (id, name, owner_email, contact_email) VALUES ($1, $2, $3, $3)`,
+      `INSERT INTO clinics (id, name, owner_email, contact_email, timezone) VALUES ($1, $2, $3, $3, 'UTC')`,
       [clinicId, 'Full Chain Test Clinic', 'owner@example.test'],
     );
     await scratchAdmin.end();

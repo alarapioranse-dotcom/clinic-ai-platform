@@ -9,7 +9,11 @@
 -- UPDATE on the row); the appointments <-> conversations relationship is a
 -- structural composite FK, not an application-level check; the EXCLUDE key
 -- is scoped to (clinic_id, practitioner_id, overlapping active interval);
--- and P4 stores UTC instants only, no clinic-local timezone architecture.
+-- and this table's own starts_at/ends_at remain plain UTC timestamptz
+-- instants regardless of any clinic-local timezone (ADR-0016, implemented in
+-- db/migrations/0012_clinic_timezone.sql, only changes how a clinic's
+-- working_hours wall-clock values are converted into those instants at
+-- availability-computation time — it does not touch this table's storage).
 --
 -- No new "schedule" table: docs/domain/03-value-objects.md's WorkingHours
 -- value object is already persisted, per-clinic, on `clinics.working_hours`

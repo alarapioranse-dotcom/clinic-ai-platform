@@ -13,7 +13,14 @@ import type { WorkingHoursJson } from '@/features/appointments';
 export interface TestClinic {
   id: string;
   name: string;
+  timeZone: string;
 }
+
+/** Default for tests that don't care about clinic-local timezone semantics: keeps every existing
+ * UTC-literal test timestamp meaning what it already means, since UTC has no DST and a zero
+ * offset. Tests that specifically exercise ADR-0016's clinic-local conversion pass their own
+ * `timeZone`. */
+const DEFAULT_TEST_CLINIC_TIMEZONE = 'UTC';
 
 /**
  * Inserted over the admin/owner connection (getDatabaseUrl), not app_user
@@ -22,7 +29,10 @@ export interface TestClinic {
  * app_user has no INSERT on `clinics` (see the migration revoking it), so
  * this fixture can no longer go through the ordinary app connection.
  */
-export async function createTestClinic(label: string): Promise<TestClinic> {
+export async function createTestClinic(
+  label: string,
+  timeZone: string = DEFAULT_TEST_CLINIC_TIMEZONE,
+): Promise<TestClinic> {
   const id = randomUUID();
   const name = `Test Clinic ${label} ${id.slice(0, 8)}`;
   const email = `${label.toLowerCase()}-${id.slice(0, 8)}@example.test`;
@@ -30,13 +40,13 @@ export async function createTestClinic(label: string): Promise<TestClinic> {
   await admin.connect();
   try {
     await admin.query(
-      `INSERT INTO clinics (id, name, owner_email, contact_email) VALUES ($1, $2, $3, $3)`,
-      [id, name, email],
+      `INSERT INTO clinics (id, name, owner_email, contact_email, timezone) VALUES ($1, $2, $3, $3, $4)`,
+      [id, name, email, timeZone],
     );
   } finally {
     await admin.end();
   }
-  return { id, name };
+  return { id, name, timeZone };
 }
 
 /**

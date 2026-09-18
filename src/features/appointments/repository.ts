@@ -115,21 +115,29 @@ export class AppointmentConflictError extends Error {
   }
 }
 
+export interface EffectiveSchedule {
+  workingHours: WorkingHoursJson;
+  timeZone: string;
+}
+
 /**
  * Resolves the practitioner's own `staff_members.working_hours` override if
  * present, else the clinic's default `clinics.working_hours` — "when
  * present, it overrides the Clinic's default WorkingHours for that
  * Practitioner specifically... when absent, the Clinic default applies"
  * (docs/domain/01-entities.md, StaffMember #8) is a whole-value override,
- * not a per-day merge. Returns `null` if `practitionerId` isn't an active
- * `practitioner`-role staff member of this clinic — callers translate that
- * to `PractitionerNotFoundError`.
+ * not a per-day merge. The timezone those wall-clock values are interpreted
+ * in always comes from the clinic, never the practitioner (ADR-0016
+ * decision item 7: no practitioner-level timezone — a practitioner's own
+ * override is interpreted in the same clinic's zone). Returns `null` if
+ * `practitionerId` isn't an active `practitioner`-role staff member of this
+ * clinic — callers translate that to `PractitionerNotFoundError`.
  */
-export async function getEffectiveWorkingHours(
+export async function getEffectiveSchedule(
   client: PoolClient,
   clinicId: string,
   practitionerId: string,
-): Promise<WorkingHoursJson | null> {
+): Promise<EffectiveSchedule | null> {
   const { rows } = await client.query<{
     role: string;
     status: string;
@@ -143,15 +151,20 @@ export async function getEffectiveWorkingHours(
   if (!staff || staff.role !== 'practitioner' || staff.status !== 'active') {
     return null;
   }
-  if (staff.working_hours) {
-    return staff.working_hours;
+
+  const { rows: clinicRows } = await client.query<{
+    working_hours: WorkingHoursJson;
+    timezone: string;
+  }>(`SELECT working_hours, timezone FROM clinics WHERE id = $1`, [clinicId]);
+  const clinic = clinicRows[0];
+  if (!clinic) {
+    return null;
   }
 
-  const { rows: clinicRows } = await client.query<{ working_hours: WorkingHoursJson }>(
-    `SELECT working_hours FROM clinics WHERE id = $1`,
-    [clinicId],
-  );
-  return clinicRows[0]?.working_hours ?? {};
+  return {
+    workingHours: staff.working_hours ?? clinic.working_hours ?? {},
+    timeZone: clinic.timezone,
+  };
 }
 
 /**

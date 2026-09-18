@@ -524,6 +524,39 @@ describe('getAvailableSlots', () => {
     expect(slots).toEqual([]);
   });
 
+  it('returns no slots for a date whose window boundary falls inside a DST fall-back overlap', async () => {
+    const ZONE = 'Africa/Cairo';
+    const yearStart = Date.UTC(2026, 0, 1);
+    const overlap = findNextDstTransitionOfKind(yearStart, ZONE, 'overlap');
+    const before = rawWallClock(overlap.lastBeforeMs, ZONE);
+    const after = rawWallClock(overlap.firstAfterMs, ZONE);
+    expect(before.year).toBe(after.year);
+    expect(before.month).toBe(after.month);
+    expect(before.day).toBe(after.day);
+    const pad2 = (n: number) => String(n).padStart(2, '0');
+    const dateStr = `${after.year}-${pad2(after.month)}-${pad2(after.day)}`;
+    // The overlap is [after HH:MM, before HH:MM] inclusive (both offsets produce that wall
+    // time). `start` is derived a full hour before it opens (unambiguous); `end` lands inside
+    // it -- mirrors the gap test above, whatever these times actually are in this tzdata
+    // snapshot, rather than fixed literals.
+    const overlapStartMinutes = after.hour * 60 + after.minute;
+    const overlapEndMinutesInclusive = before.hour * 60 + before.minute;
+    const startMinutes = Math.max(0, overlapStartMinutes - 60);
+    const endMinutes = Math.floor((overlapStartMinutes + overlapEndMinutesInclusive) / 2);
+    const start = `${pad2(Math.floor(startMinutes / 60))}:${pad2(startMinutes % 60)}`;
+    const end = `${pad2(Math.floor(endMinutes / 60))}:${pad2(endMinutes % 60)}`;
+
+    const clinic = await createTestClinic('AvailDstOverlap', ZONE);
+    await setClinicWorkingHours(clinic.id, { [weekdayKeyOf(after)]: { start, end } });
+    const practitioner = await createTestStaffMember(clinic.id, 'AvailDstOverlap', {
+      role: 'practitioner',
+    });
+
+    const slots = await getAvailableSlots(clinic.id, practitioner.id, dateStr, 30);
+
+    expect(slots).toEqual([]);
+  });
+
   it("a practitioner's WorkingHours override is interpreted in the clinic's timezone, not a timezone of its own", async () => {
     const clinic = await createTestClinic('AvailOverrideClinicZone', 'Asia/Dubai');
     await setClinicWorkingHours(clinic.id, { thursday: { start: '01:00', end: '02:00' } });

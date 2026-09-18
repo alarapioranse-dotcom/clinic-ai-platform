@@ -43,7 +43,14 @@ export function rawOffsetMinutes(instantMs: number, timeZone: string): number {
   const part =
     formatter.formatToParts(instantMs).find((p) => p.type === 'timeZoneName')?.value ?? 'GMT';
   const match = /^GMT([+-]\d{1,2})(?::(\d{2}))?$/.exec(part);
-  if (!match) return 0;
+  if (!match) {
+    // A silent 0 here would make a helper that stopped parsing Intl's output correctly look like
+    // a passing "UTC" test instead of a broken helper -- fail loudly with the actual value
+    // instead, per review: "a silent 0 can turn a broken helper into a passing test."
+    throw new Error(
+      `rawOffsetMinutes: unrecognized timeZoneName part ${JSON.stringify(part)} for ${timeZone}`,
+    );
+  }
   const hours = Number(match[1]);
   const minutes = Number(match[2] ?? '0');
   return (hours < 0 ? -1 : 1) * (Math.abs(hours) * 60 + minutes);

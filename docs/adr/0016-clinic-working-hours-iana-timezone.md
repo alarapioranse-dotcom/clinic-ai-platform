@@ -109,42 +109,21 @@ technical-design choice, and P4 must not depend on it without Ahmed's sign-off.
    - Multi-timezone scheduling workflows (e.g., letting one clinic view another clinic's slots
      converted to its own local time).
 
-## Unresolved: what timezone existing clinics get
+## Resolved: existing-clinic timezone migration
 
-**This is not decided by this ADR and is not this ADR's author's to decide.** It is recorded here,
-explicitly, as an open question for Ahmed, per the instruction that produced this draft: do not
-assume a timezone for existing clinics merely because of where the current deployment happens to run.
+The owner has resolved the migration behavior for clinics that predate this ADR. Production was
+verified directly: clinics has no RLS or FORCE RLS, contains exactly one row, and that row is the
+known deployment-validation artifact "Deployment Validation Demo Clinic," created 2026-09-06. No real
+clinic exists in any environment, and no working_hours value has ever been written. Therefore there
+are no unknown or historical customer schedule values to reinterpret.
 
-The question: today, `clinics.working_hours` is `NOT NULL DEFAULT '{}'::jsonb`
-(`db/migrations/0003_clinics.sql`) and no clinic in any environment has ever had a real value written
-to it — no application code path writes it yet (confirmed by inspection: no migration after 0003,
-and no `src/**` code before this PR, ever reads or writes `clinics.working_hours`). So this is not
-strictly a data-migration problem in the sense of reinterpreting existing wall-clock values — no real
-values exist yet in any deployed environment. It _is_ a design question of what a newly required
-timezone attribute defaults to (or whether it is required at all, with no default) for a clinic row
-that predates this ADR's schema change. Options, with their costs:
+The clinics timezone attribute will be NOT NULL with no DEFAULT. The implementing migration will
+assign an explicit IANA timezone to the single known demo clinic inline. Every clinic created after
+this migration must explicitly supply its own timezone; there is no silent fallback timezone.
 
-- **No default; the column is `NOT NULL` with no `DEFAULT`, and the migration backfills nothing.**
-  Existing clinic rows (if any exist in a deployed environment by the time this migration runs) would
-  fail the `NOT NULL` constraint unless backfilled first. Safest in the sense of forcing an explicit
-  choice per clinic, but requires knowing, per environment, whether any clinic rows already exist
-  before this migration can even be written safely — that fact is not known at ADR-drafting time and
-  must be checked against each real deployment (production included) before implementation, not
-  assumed.
-- **A backfill to one specific IANA zone for all pre-existing rows** (e.g., the zone most of this
-  platform's stated market sits in). Simplest to implement, but is exactly the "assume a timezone
-  because of where the deployment happens to sit" reasoning this task was explicitly told not to do
-  on its own initiative — silently wrong for any pre-existing clinic outside that zone, with no
-  record that the value was guessed rather than entered.
-- **Nullable column, `NULL` meaning "not yet configured," with availability computation refusing to
-  compute slots (or falling back to some explicitly-labeled behavior) until a clinic's owner sets
-  it.** Avoids guessing, but changes P4's own availability contract (what `GET
-/api/appointments/availability` returns for a clinic with no timezone set) — a decision with its
-  own consequences this ADR does not evaluate.
-
-Whichever option is chosen, and the exact default/migration behavior for existing clinics, is
-explicitly deferred to the owner and must be recorded (either as an addition to this ADR before it is
-Accepted, or as its own follow-up decision) before the implementing migration is written.
+A blanket backfill is rejected as unnecessary for the single known non-customer row. A nullable
+column is rejected because it would change the P4 availability contract without providing a benefit
+in the actual deployed data state.
 
 ## Consequences
 

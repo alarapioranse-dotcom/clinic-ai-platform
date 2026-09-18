@@ -35,13 +35,16 @@ import { withTenantContext } from '@/lib/db';
 import {
   computeAvailableSlots,
   dayBoundsUtc,
+  zonedDayBoundsUtc,
   getWindowForDate,
+  isValidIanaTimeZone,
+  localWindowToUtcInstants,
   type TimeSlot,
   type WorkingHoursJson,
   type DayWindow,
 } from './schedule';
 import {
-  getEffectiveWorkingHours,
+  getEffectiveSchedule,
   listActiveAppointmentsForPractitionerOnDate,
   listPractitioners,
   insertAppointment,
@@ -62,7 +65,14 @@ export type {
   WorkingHoursJson,
   DayWindow,
 };
-export { computeAvailableSlots, dayBoundsUtc, getWindowForDate };
+export {
+  computeAvailableSlots,
+  dayBoundsUtc,
+  zonedDayBoundsUtc,
+  getWindowForDate,
+  isValidIanaTimeZone,
+  localWindowToUtcInstants,
+};
 export {
   PractitionerNotFoundError,
   PatientNotFoundError,
@@ -72,9 +82,10 @@ export {
 
 /**
  * Computes available `durationMinutes`-long slots for `practitionerId` on
- * `date` (a `YYYY-MM-DD` string, interpreted in UTC per P4 addendum S1 — no
- * clinic-local timezone architecture in P4). Throws `PractitionerNotFoundError`
- * if `practitionerId` isn't an active practitioner in this clinic.
+ * `date` (a `YYYY-MM-DD` string, interpreted as the practitioner's owning
+ * clinic's own local calendar date — ADR-0016). Throws
+ * `PractitionerNotFoundError` if `practitionerId` isn't an active
+ * practitioner in this clinic.
  */
 export async function getAvailableSlots(
   clinicId: string,
@@ -83,13 +94,14 @@ export async function getAvailableSlots(
   durationMinutes: number,
 ): Promise<TimeSlot[]> {
   return withTenantContext(clinicId, async (client) => {
-    const workingHours = await getEffectiveWorkingHours(client, clinicId, practitionerId);
-    if (!workingHours) {
+    const schedule = await getEffectiveSchedule(client, clinicId, practitionerId);
+    if (!schedule) {
       throw new PractitionerNotFoundError();
     }
+    const { workingHours, timeZone } = schedule;
 
     const window = getWindowForDate(workingHours, date);
-    const { dayStart, dayEnd } = dayBoundsUtc(date);
+    const { dayStart, dayEnd } = zonedDayBoundsUtc(date, timeZone);
     const busyIntervals = await listActiveAppointmentsForPractitionerOnDate(
       client,
       clinicId,
@@ -98,7 +110,7 @@ export async function getAvailableSlots(
       dayEnd,
     );
 
-    return computeAvailableSlots(window, date, durationMinutes, busyIntervals);
+    return computeAvailableSlots(window, date, timeZone, durationMinutes, busyIntervals);
   });
 }
 

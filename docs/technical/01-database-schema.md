@@ -48,6 +48,7 @@ CREATE TABLE clinics (
   status           text NOT NULL DEFAULT 'onboarding'
                      CHECK (status IN ('onboarding', 'active')),
   working_hours    jsonb NOT NULL DEFAULT '{}'::jsonb,
+  timezone         text NOT NULL,
   created_at       timestamptz NOT NULL DEFAULT now(),
   updated_at       timestamptz NOT NULL DEFAULT now(),
 
@@ -68,6 +69,12 @@ CREATE TABLE clinics (
   ([`docs/domain/03-value-objects.md`](../domain/03-value-objects.md)) as JSONB — a value object
   with no identity of its own is naturally embedded, not given its own table with a foreign key
   back to one clinic row.
+- `timezone` is a standard IANA timezone identifier (e.g. `Africa/Cairo`), never a fixed numeric UTC
+  offset, per [ADR-0016](../adr/0016-clinic-working-hours-iana-timezone.md) (Accepted):
+  `working_hours`'s `HH:MM` values are clinic-local wall-clock times, interpreted in this zone. `NOT
+NULL` with no `DEFAULT` — every clinic must explicitly supply its own
+  (`db/migrations/0012_clinic_timezone.sql`), scoped to the Clinic only (no per-practitioner, -site,
+  or historical timezone).
 
 ## `services`
 
@@ -501,10 +508,13 @@ ALTER TABLE appointments ADD CONSTRAINT appointments_no_double_booking
   API layer, not here: it's a rule about which requests are accepted, not about what a stored row
   may look like (a cancelled Appointment's row is perfectly valid data; it's the reschedule
   _action_ that's refused). See [`03-api-contracts.md`](./03-api-contracts.md).
-- No `available_slots` table and no clinic-local timezone architecture (P4 addendum S1):
-  availability is computed at read time from `clinics.working_hours` /
+- No `available_slots` table: availability is computed at read time from `clinics.working_hours` /
   `staff_members.working_hours` plus this table's active rows — see
-  `src/features/appointments/schedule.ts`.
+  `src/features/appointments/schedule.ts`. Per [ADR-0016](../adr/0016-clinic-working-hours-iana-timezone.md)
+  (Accepted), those `working_hours` values are clinic-local wall-clock times, converted to the
+  absolute `timestamptz` instants this table stores using the clinic's own `timezone`
+  (`clinics.timezone`, `db/migrations/0012_clinic_timezone.sql`) — this table's own `starts_at`/
+  `ends_at` remain plain UTC instants throughout; only that conversion step is clinic-local.
 
 ## `knowledge_documents`
 

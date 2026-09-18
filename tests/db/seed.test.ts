@@ -9,6 +9,7 @@ import { signIn, hashPassword } from '@/features/auth';
 import {
   DEMO_CLINIC_ID,
   DEMO_CLINIC_NAME,
+  DEMO_CLINIC_TIMEZONE,
   DEMO_STAFF_ID,
   DEMO_STAFF_EMAIL,
   DEMO_STAFF_ROLE,
@@ -110,11 +111,15 @@ describe('scripts/seed.ts: seedDemoData', () => {
       staffEmail: DEMO_STAFF_EMAIL,
     });
 
-    const clinicRows = await client.query('SELECT id, name FROM clinics WHERE id = $1', [
+    const clinicRows = await client.query('SELECT id, name, timezone FROM clinics WHERE id = $1', [
       DEMO_CLINIC_ID,
     ]);
     expect(clinicRows.rows).toHaveLength(1);
-    expect(clinicRows.rows[0]).toMatchObject({ id: DEMO_CLINIC_ID, name: DEMO_CLINIC_NAME });
+    expect(clinicRows.rows[0]).toMatchObject({
+      id: DEMO_CLINIC_ID,
+      name: DEMO_CLINIC_NAME,
+      timezone: DEMO_CLINIC_TIMEZONE,
+    });
 
     await client.query('BEGIN');
     await client.query("SELECT set_config('app.current_clinic_id', $1, true)", [DEMO_CLINIC_ID]);
@@ -210,8 +215,8 @@ describe('scripts/seed.ts: seedDemoData rolls back atomically on failure', () =>
     const collidingStaffId = randomUUID();
     const collidingPasswordHash = await hashPassword(`CollidingPassword-${randomUUID()}`);
     await client.query(
-      `INSERT INTO clinics (id, name, contact_email, owner_email, status)
-       VALUES ($1, 'Collision Test Clinic', $2, $2, 'active')`,
+      `INSERT INTO clinics (id, name, contact_email, owner_email, status, timezone)
+       VALUES ($1, 'Collision Test Clinic', $2, $2, 'active', 'UTC')`,
       [collidingClinicId, `collision-${collidingClinicId}@example.test`],
     );
     await client.query('BEGIN');

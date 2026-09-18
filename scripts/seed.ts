@@ -44,6 +44,17 @@ export const DEMO_STAFF_EMAIL = 'demo-staff@example.test';
 export const DEMO_STAFF_ROLE = 'receptionist';
 
 /**
+ * Same value, same rationale, as the one `db/migrations/0012_clinic_timezone.sql`
+ * backfills onto this exact clinic id in a deployment that already has it:
+ * a synthetic deployment-validation artifact with no location data, so
+ * Africa/Cairo is assigned deliberately (it observes DST and is not UTC,
+ * exercising ADR-0016's clinic-local semantics) rather than derived from
+ * evidence. Not a default for any other clinic — `clinics.timezone` has no
+ * DEFAULT (ADR-0016) and every other clinic must supply its own.
+ */
+export const DEMO_CLINIC_TIMEZONE = 'Africa/Cairo';
+
+/**
  * The "refuse to run in production" gate. Pure and dependency-free —
  * doesn't read `process.env` or touch a database — so it's directly
  * testable. `forced` must be the exact value `isSeedForceEnabled()`
@@ -82,15 +93,16 @@ export async function seedDemoData(
   await client.query('BEGIN');
   try {
     await client.query(
-      `INSERT INTO clinics (id, name, contact_email, owner_email, status)
-       VALUES ($1, $2, $3, $3, 'active')
+      `INSERT INTO clinics (id, name, contact_email, owner_email, status, timezone)
+       VALUES ($1, $2, $3, $3, 'active', $4)
        ON CONFLICT (id) DO UPDATE SET
          name = EXCLUDED.name,
          contact_email = EXCLUDED.contact_email,
          owner_email = EXCLUDED.owner_email,
          status = EXCLUDED.status,
+         timezone = EXCLUDED.timezone,
          updated_at = now()`,
-      [DEMO_CLINIC_ID, DEMO_CLINIC_NAME, DEMO_CLINIC_CONTACT_EMAIL],
+      [DEMO_CLINIC_ID, DEMO_CLINIC_NAME, DEMO_CLINIC_CONTACT_EMAIL, DEMO_CLINIC_TIMEZONE],
     );
 
     // Bind parameter, never interpolated — the same discipline as

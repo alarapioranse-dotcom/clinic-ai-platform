@@ -12,6 +12,12 @@ import {
   AppointmentConflictError,
 } from '@/features/appointments';
 import { createTestClinic, createTestStaffMember, setClinicWorkingHours } from '../../fixtures';
+import {
+  findNextDstTransitionOfKind,
+  rawOffsetMinutes,
+  rawWallClock,
+  weekdayKeyOf,
+} from '../../dst-test-helpers';
 
 /**
  * Feature-level coverage for `src/features/appointments` (roadmap P4 Slice
@@ -407,5 +413,198 @@ describe('getAvailableSlots', () => {
     await expect(
       getAvailableSlots(clinic.id, '00000000-0000-0000-0000-000000000000', '2026-09-17', 30),
     ).rejects.toThrow(PractitionerNotFoundError);
+  });
+
+  it('converts clinic-local working hours to UTC using the clinic timezone (ADR-0016), for a non-UTC clinic', async () => {
+    const clinic = await createTestClinic('AvailNonUtcClinic', 'Asia/Dubai');
+    await setClinicWorkingHours(clinic.id, { thursday: { start: '09:00', end: '10:00' } });
+    const practitioner = await createTestStaffMember(clinic.id, 'AvailNonUtcClinic', {
+      role: 'practitioner',
+    });
+
+    // 09:00-10:00 in Asia/Dubai (constant UTC+4, no DST) is 05:00-06:00 UTC.
+    const slots = await getAvailableSlots(clinic.id, practitioner.id, '2026-09-17', 30);
+
+    expect(slots).toEqual([
+      {
+        startsAt: new Date('2026-09-17T05:00:00.000Z'),
+        endsAt: new Date('2026-09-17T05:30:00.000Z'),
+      },
+      {
+        startsAt: new Date('2026-09-17T05:30:00.000Z'),
+        endsAt: new Date('2026-09-17T06:00:00.000Z'),
+      },
+    ]);
+  });
+
+  it('resolves the same clinic-local working hours to a different UTC offset on either side of a real DST transition (Africa/Cairo)', async () => {
+    // Discovered dynamically, not pinned to a specific calendar date frozen at authoring time --
+    // see ../../dst-test-helpers's own header comment for why (a real DST rule change, or a
+    // different Node/ICU tzdata snapshot on CI, could otherwise silently break this test).
+    const ZONE = 'Africa/Cairo';
+    const yearStart = Date.UTC(2026, 0, 1);
+    const gap = findNextDstTransitionOfKind(yearStart, ZONE, 'gap');
+    const beforeDay = rawWallClock(gap.lastBeforeMs, ZONE);
+    const afterDay = rawWallClock(gap.firstAfterMs, ZONE);
+    const pad2 = (n: number) => String(n).padStart(2, '0');
+    const dateStr = (wc: { year: number; month: number; day: number }) =>
+      `${wc.year}-${pad2(wc.month)}-${pad2(wc.day)}`;
+
+    const clinic = await createTestClinic('AvailDstClinic', ZONE);
+    await setClinicWorkingHours(clinic.id, {
+      [weekdayKeyOf(beforeDay)]: { start: '09:00', end: '10:00' },
+      [weekdayKeyOf(afterDay)]: { start: '09:00', end: '10:00' },
+    });
+    const practitioner = await createTestStaffMember(clinic.id, 'AvailDstClinic', {
+      role: 'practitioner',
+    });
+
+    const beforeOffset = rawOffsetMinutes(
+      Date.UTC(beforeDay.year, beforeDay.month - 1, beforeDay.day, 9, 0, 0),
+      ZONE,
+    );
+    const afterOffset = rawOffsetMinutes(
+      Date.UTC(afterDay.year, afterDay.month - 1, afterDay.day, 9, 0, 0),
+      ZONE,
+    );
+    expect(afterOffset).not.toBe(beforeOffset); // the property this test exists to prove
+
+    const beforeDst = await getAvailableSlots(clinic.id, practitioner.id, dateStr(beforeDay), 60);
+    const afterDst = await getAvailableSlots(clinic.id, practitioner.id, dateStr(afterDay), 60);
+
+    expect(beforeDst).toEqual([
+      {
+        startsAt: new Date(
+          Date.UTC(beforeDay.year, beforeDay.month - 1, beforeDay.day, 9, 0, 0) -
+            beforeOffset * 60_000,
+        ),
+        endsAt: new Date(
+          Date.UTC(beforeDay.year, beforeDay.month - 1, beforeDay.day, 10, 0, 0) -
+            beforeOffset * 60_000,
+        ),
+      },
+    ]);
+    expect(afterDst).toEqual([
+      {
+        startsAt: new Date(
+          Date.UTC(afterDay.year, afterDay.month - 1, afterDay.day, 9, 0, 0) - afterOffset * 60_000,
+        ),
+        endsAt: new Date(
+          Date.UTC(afterDay.year, afterDay.month - 1, afterDay.day, 10, 0, 0) -
+            afterOffset * 60_000,
+        ),
+      },
+    ]);
+  });
+
+  it('returns no slots for a date whose window falls inside a DST spring-forward gap', async () => {
+    const ZONE = 'Africa/Cairo';
+    const yearStart = Date.UTC(2026, 0, 1);
+    const gap = findNextDstTransitionOfKind(yearStart, ZONE, 'gap');
+    const gapDay = rawWallClock(gap.firstAfterMs, ZONE);
+    const pad2 = (n: number) => String(n).padStart(2, '0');
+    const dateStr = `${gapDay.year}-${pad2(gapDay.month)}-${pad2(gapDay.day)}`;
+    // The gap is [gapDay 00:00, gapDay <firstAfter time>) -- pick a window whose start lands
+    // inside it (nonexistent) and whose end lands comfortably after it, whatever those actually
+    // are in this tzdata snapshot, rather than fixed "00:15"/"01:15" literals.
+    const gapEndMinutes = gapDay.hour * 60 + gapDay.minute;
+    const startMinutes = Math.floor(gapEndMinutes / 2);
+    const endMinutes = gapEndMinutes + 60;
+    const start = `${pad2(Math.floor(startMinutes / 60))}:${pad2(startMinutes % 60)}`;
+    const end = `${pad2(Math.floor(endMinutes / 60))}:${pad2(endMinutes % 60)}`;
+
+    const clinic = await createTestClinic('AvailDstGap', ZONE);
+    await setClinicWorkingHours(clinic.id, { [weekdayKeyOf(gapDay)]: { start, end } });
+    const practitioner = await createTestStaffMember(clinic.id, 'AvailDstGap', {
+      role: 'practitioner',
+    });
+
+    const slots = await getAvailableSlots(clinic.id, practitioner.id, dateStr, 30);
+
+    expect(slots).toEqual([]);
+  });
+
+  it('returns no slots for a date whose window boundary falls inside a DST fall-back overlap', async () => {
+    const ZONE = 'Africa/Cairo';
+    const yearStart = Date.UTC(2026, 0, 1);
+    const overlap = findNextDstTransitionOfKind(yearStart, ZONE, 'overlap');
+    const before = rawWallClock(overlap.lastBeforeMs, ZONE);
+    const after = rawWallClock(overlap.firstAfterMs, ZONE);
+    expect(before.year).toBe(after.year);
+    expect(before.month).toBe(after.month);
+    expect(before.day).toBe(after.day);
+    const pad2 = (n: number) => String(n).padStart(2, '0');
+    const dateStr = `${after.year}-${pad2(after.month)}-${pad2(after.day)}`;
+    // The overlap is [after HH:MM, before HH:MM] inclusive (both offsets produce that wall
+    // time). `start` is derived a full hour before it opens (unambiguous); `end` lands inside
+    // it -- mirrors the gap test above, whatever these times actually are in this tzdata
+    // snapshot, rather than fixed literals.
+    const overlapStartMinutes = after.hour * 60 + after.minute;
+    const overlapEndMinutesInclusive = before.hour * 60 + before.minute;
+    const startMinutes = Math.max(0, overlapStartMinutes - 60);
+    const endMinutes = Math.floor((overlapStartMinutes + overlapEndMinutesInclusive) / 2);
+    const start = `${pad2(Math.floor(startMinutes / 60))}:${pad2(startMinutes % 60)}`;
+    const end = `${pad2(Math.floor(endMinutes / 60))}:${pad2(endMinutes % 60)}`;
+
+    const clinic = await createTestClinic('AvailDstOverlap', ZONE);
+    await setClinicWorkingHours(clinic.id, { [weekdayKeyOf(after)]: { start, end } });
+    const practitioner = await createTestStaffMember(clinic.id, 'AvailDstOverlap', {
+      role: 'practitioner',
+    });
+
+    const slots = await getAvailableSlots(clinic.id, practitioner.id, dateStr, 30);
+
+    expect(slots).toEqual([]);
+  });
+
+  it("a practitioner's WorkingHours override is interpreted in the clinic's timezone, not a timezone of its own", async () => {
+    const clinic = await createTestClinic('AvailOverrideClinicZone', 'Asia/Dubai');
+    await setClinicWorkingHours(clinic.id, { thursday: { start: '01:00', end: '02:00' } });
+    const practitioner = await createTestStaffMember(clinic.id, 'AvailOverrideClinicZone', {
+      role: 'practitioner',
+      workingHours: { thursday: { start: '09:00', end: '10:00' } },
+    });
+
+    // The override's 09:00-10:00 must still convert via the clinic's Asia/Dubai
+    // (UTC+4) zone, exactly like the clinic default would -- 05:00-06:00 UTC.
+    const slots = await getAvailableSlots(clinic.id, practitioner.id, '2026-09-17', 30);
+
+    expect(slots).toEqual([
+      {
+        startsAt: new Date('2026-09-17T05:00:00.000Z'),
+        endsAt: new Date('2026-09-17T05:30:00.000Z'),
+      },
+      {
+        startsAt: new Date('2026-09-17T05:30:00.000Z'),
+        endsAt: new Date('2026-09-17T06:00:00.000Z'),
+      },
+    ]);
+  });
+
+  it('an existing active appointment near a clinic-local midnight boundary still removes conflicting availability for a non-UTC clinic', async () => {
+    const clinic = await createTestClinic('AvailNonUtcActiveRemoves', 'Asia/Dubai');
+    await setClinicWorkingHours(clinic.id, { thursday: { start: '09:00', end: '10:00' } });
+    const patient = await createPatient(clinic.id, { phoneNumber: '+201000002014' });
+    const practitioner = await createTestStaffMember(clinic.id, 'AvailNonUtcActiveRemoves', {
+      role: 'practitioner',
+    });
+
+    // 09:00-09:30 Asia/Dubai (UTC+4) is 05:00-05:30 UTC.
+    await bookAppointment(clinic.id, {
+      patientId: patient.id,
+      practitionerId: practitioner.id,
+      conversationId: null,
+      startsAt: new Date('2026-09-17T05:00:00.000Z'),
+      endsAt: new Date('2026-09-17T05:30:00.000Z'),
+    });
+
+    const slots = await getAvailableSlots(clinic.id, practitioner.id, '2026-09-17', 30);
+
+    expect(slots).toEqual([
+      {
+        startsAt: new Date('2026-09-17T05:30:00.000Z'),
+        endsAt: new Date('2026-09-17T06:00:00.000Z'),
+      },
+    ]);
   });
 });

@@ -518,6 +518,16 @@ ALTER TABLE appointments ADD CONSTRAINT appointments_no_double_booking
 
 ## `knowledge_documents`
 
+**This section now matches the real migration** — `db/migrations/0013_knowledge_documents.sql`
+(P5 Slice 1A) — rather than only illustrating a future shape, per the charter's Definition of Done
+("Documentation updated in the same pull request"). The `knowledge_document_status_fields_match`
+`CHECK` constraint below was corrected in that same PR from an earlier draft of this document that
+omitted the `CHECK` keyword, a pre-existing syntax defect in this document (invalid SQL as
+originally written) — the real migration always included it. Slice 1A adds only the table, its RLS
+policy, and a `SELECT`-only grant to `app_user`: no code path in this slice inserts, updates, or
+deletes a row (see the migration's own comments) — `storage_key` is only ever produced by the
+Slice 1B upload flow (ADR-0018), and status transitions and object deletion are Slice 1B's as well.
+
 ```sql
 CREATE TABLE knowledge_documents (
   id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -533,7 +543,7 @@ CREATE TABLE knowledge_documents (
   created_at       timestamptz NOT NULL DEFAULT now(),
   ready_at         timestamptz,
 
-  CONSTRAINT knowledge_document_status_fields_match (
+  CONSTRAINT knowledge_document_status_fields_match CHECK (
     (status = 'ready' AND ready_at IS NOT NULL) OR
     (status <> 'ready' AND ready_at IS NULL)
   ),

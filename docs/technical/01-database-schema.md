@@ -528,6 +528,15 @@ policy, and a `SELECT`-only grant to `app_user`: no code path in this slice inse
 deletes a row (see the migration's own comments) — `storage_key` is only ever produced by the
 Slice 1B upload flow (ADR-0018), and status transitions and object deletion are Slice 1B's as well.
 
+`uploaded_by` below also gained a same-clinic composite foreign key
+(`knowledge_documents_uploaded_by_same_clinic`) on owner review of the pull request that introduced
+this migration — this document's original draft predated the same-clinic composite-FK pattern this
+schema uses elsewhere (`conversations_patient_same_clinic`, `messages_sender_staff_same_clinic`,
+`appointments_practitioner_same_clinic`) and documented `uploaded_by` as a plain
+`REFERENCES staff_members(id)`. The real migration's shape below is authoritative; no new unique
+constraint was needed for it — `staff_members_id_key UNIQUE (id, clinic_id)`
+(`db/migrations/0005_staff_members.sql`) already exists as the composite FK's target.
+
 ```sql
 CREATE TABLE knowledge_documents (
   id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -548,7 +557,14 @@ CREATE TABLE knowledge_documents (
     (status <> 'ready' AND ready_at IS NULL)
   ),
   CONSTRAINT knowledge_document_failed_reason_matches_status
-    CHECK (status = 'failed' OR failed_reason IS NULL)
+    CHECK (status = 'failed' OR failed_reason IS NULL),
+
+  -- Same-clinic reference, same structural pattern as
+  -- conversations_patient_same_clinic and appointments_practitioner_same_clinic:
+  -- a cross-clinic uploaded_by is rejected by the database itself, not
+  -- trusted from application code.
+  CONSTRAINT knowledge_documents_uploaded_by_same_clinic
+    FOREIGN KEY (uploaded_by, clinic_id) REFERENCES staff_members (id, clinic_id)
 );
 
 ALTER TABLE knowledge_documents ENABLE ROW LEVEL SECURITY;

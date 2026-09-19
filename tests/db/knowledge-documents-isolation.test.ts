@@ -8,9 +8,11 @@ import { createTestClinic, createTestStaffMember, createTestKnowledgeDocument } 
 /**
  * Database-layer coverage for `db/migrations/0013_knowledge_documents.sql`
  * (roadmap P5 Slice 1A, "document persistence foundation"): RLS tenant
- * isolation, the documented CHECK constraints, the plain foreign keys, and
- * `app_user`'s least-privilege grants (SELECT only — no INSERT/UPDATE/DELETE
- * exist in this slice). No test here goes through a repository "create"
+ * isolation, the documented CHECK constraints, the foreign keys (including
+ * the `knowledge_documents_uploaded_by_same_clinic` composite FK added on
+ * owner review), and `app_user`'s least-privilege grants (SELECT only — no
+ * INSERT/UPDATE/DELETE exist in this slice). No test here goes through a
+ * repository "create"
  * function because none exists: fixture rows are inserted directly via
  * `createTestKnowledgeDocument` (../fixtures.ts), the same convention
  * `tests/db/appointments-invariants.test.ts` uses for schema-level behavior.
@@ -319,33 +321,36 @@ describe('knowledge documents: persistence, RLS, and grants', () => {
       }
     });
 
-    it(
-      'documented gap: uploaded_by is a plain FK, not a same-clinic composite FK — a staff member ' +
-        'from a different clinic than clinic_id is currently accepted (see the migration comment; ' +
-        'this is not decided in this slice)',
-      async () => {
-        const clinicA = await createTestClinic('KdocGapA');
-        const clinicB = await createTestClinic('KdocGapB');
-        const staffB = await createTestStaffMember(clinicB.id, 'KdocGapB');
+    it('rejects an uploaded_by belonging to a different clinic than clinic_id (knowledge_documents_uploaded_by_same_clinic)', async () => {
+      // SQLSTATE 23503 (foreign_key_violation), verified directly against a
+      // real Postgres instance while adding this constraint: "insert or
+      // update on table \"knowledge_documents\" violates foreign key
+      // constraint \"knowledge_documents_uploaded_by_same_clinic\"" — same
+      // structural pattern as appointments_practitioner_same_clinic and
+      // messages_sender_staff_same_clinic above.
+      const clinicA = await createTestClinic('KdocFkStaffClinicA');
+      const clinicB = await createTestClinic('KdocFkStaffClinicB');
+      const staffB = await createTestStaffMember(clinicB.id, 'KdocFkStaffClinicB');
 
-        const admin = new Client({ connectionString: getDatabaseUrl() });
-        await admin.connect();
-        try {
-          await admin.query('BEGIN');
-          await admin.query("SELECT set_config('app.current_clinic_id', $1, true)", [clinicA.id]);
-          await expect(
-            admin.query(
-              `INSERT INTO knowledge_documents (clinic_id, uploaded_by, filename, mime_type, size_bytes, storage_key)
-               VALUES ($1, $2, 'x.pdf', 'application/pdf', 1, 'x')`,
-              [clinicA.id, staffB.id],
-            ),
-          ).resolves.toBeDefined();
-          await admin.query('ROLLBACK');
-        } finally {
-          await admin.end();
-        }
-      },
-    );
+      const admin = new Client({ connectionString: getDatabaseUrl() });
+      await admin.connect();
+      try {
+        await admin.query('BEGIN');
+        await admin.query("SELECT set_config('app.current_clinic_id', $1, true)", [clinicA.id]);
+        await expect(
+          admin.query(
+            `INSERT INTO knowledge_documents (clinic_id, uploaded_by, filename, mime_type, size_bytes, storage_key)
+             VALUES ($1, $2, 'x.pdf', 'application/pdf', 1, 'x')`,
+            [clinicA.id, staffB.id],
+          ),
+        ).rejects.toThrow(
+          /knowledge_documents_uploaded_by_same_clinic|violates foreign key constraint/i,
+        );
+        await admin.query('ROLLBACK');
+      } finally {
+        await admin.end();
+      }
+    });
   });
 
   /**

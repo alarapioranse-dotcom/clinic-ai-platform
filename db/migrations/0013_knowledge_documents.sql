@@ -27,14 +27,17 @@
 CREATE TABLE knowledge_documents (
   id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   clinic_id        uuid NOT NULL REFERENCES clinics(id),
-  -- Plain FK, not a same-clinic composite FK (unlike, e.g.,
-  -- appointments_practitioner_same_clinic) — 01-database-schema.md documents
-  -- this column as `REFERENCES staff_members(id)` alone, with no
-  -- `staff_members (id, clinic_id)` composite target. Implemented exactly as
-  -- documented, not extended: whether a cross-clinic uploaded_by should be
-  -- structurally impossible here is a schema-invariant decision the brief
-  -- for this slice reserves ("semantics you may not decide"), not something
-  -- to resolve unilaterally in this migration.
+  -- 01-database-schema.md documented this column as a plain
+  -- `REFERENCES staff_members(id)` — written before this schema adopted the
+  -- same-clinic composite-FK pattern now used throughout (conversations,
+  -- messages, appointments). Owner review on this PR requires the same
+  -- pattern here too: the composite FK below, matching
+  -- appointments_practitioner_same_clinic's shape, is what makes "an
+  -- uploader belongs to the same clinic as the document" a structural
+  -- impossibility to violate rather than an application-code discipline.
+  -- Its target, staff_members_id_key UNIQUE (id, clinic_id), already exists
+  -- (db/migrations/0005_staff_members.sql) — no new unique constraint is
+  -- needed. The doc is corrected to match in this same PR.
   uploaded_by      uuid NOT NULL REFERENCES staff_members(id),
   filename         text NOT NULL,
   mime_type        text NOT NULL,
@@ -51,7 +54,14 @@ CREATE TABLE knowledge_documents (
     (status <> 'ready' AND ready_at IS NULL)
   ),
   CONSTRAINT knowledge_document_failed_reason_matches_status
-    CHECK (status = 'failed' OR failed_reason IS NULL)
+    CHECK (status = 'failed' OR failed_reason IS NULL),
+
+  -- Same-clinic reference, same structural pattern as
+  -- appointments_practitioner_same_clinic (0011) and
+  -- messages_sender_staff_same_clinic (0010): a cross-clinic uploaded_by is
+  -- rejected by the database itself, not trusted from application code.
+  CONSTRAINT knowledge_documents_uploaded_by_same_clinic
+    FOREIGN KEY (uploaded_by, clinic_id) REFERENCES staff_members (id, clinic_id)
 );
 
 -- Same rationale as every other clinic_id-prefixed index in this schema

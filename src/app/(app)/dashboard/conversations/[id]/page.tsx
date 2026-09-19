@@ -14,6 +14,14 @@ interface MessageRow {
   sentAt: string;
 }
 
+interface AppointmentRow {
+  id: string;
+  practitionerId: string;
+  startsAt: string;
+  endsAt: string;
+  status: string;
+}
+
 interface ConversationDetail {
   conversation: {
     id: string;
@@ -21,6 +29,7 @@ interface ConversationDetail {
     createdAt: string;
   };
   messages: MessageRow[];
+  appointments: AppointmentRow[];
 }
 
 type DetailState =
@@ -204,10 +213,26 @@ export default function ConversationDetailPage() {
             </div>
           )}
 
+          {state.detail.appointments.length > 0 && (
+            <div className="border-line mt-6 flex flex-col gap-3 border-t pt-6">
+              <h2 className="font-display text-lg font-bold">المواعيد</h2>
+              <ul className="flex flex-col gap-3">
+                {state.detail.appointments.map((appointment) => (
+                  <li key={appointment.id} className="border-line rounded-lg border p-4 text-sm">
+                    {new Date(appointment.startsAt).toLocaleString('ar')} —{' '}
+                    {new Date(appointment.endsAt).toLocaleString('ar')}
+                    <span className="text-muted mr-2">({appointment.status})</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {role !== null && BOOK_ROLES.has(role) && (
             <BookAppointment
               conversationId={state.detail.conversation.id}
               patientId={state.detail.conversation.patientId}
+              onBooked={load}
             />
           )}
         </div>

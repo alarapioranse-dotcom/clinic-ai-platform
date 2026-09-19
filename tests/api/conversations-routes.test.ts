@@ -4,6 +4,7 @@ import { closePool, withTenantContext } from '@/lib/db';
 import { createTestClinic, createTestStaffMember } from '../fixtures';
 import { createPatient } from '@/features/patients';
 import { receiveInboundMessage } from '@/features/conversations';
+import { bookAppointment } from '@/features/appointments';
 import { POST as signInRoute } from '@/app/api/auth/sign-in/route';
 import { GET as conversationsRoute } from '@/app/api/conversations/route';
 import { GET as conversationDetailRoute } from '@/app/api/conversations/[id]/route';
@@ -208,6 +209,80 @@ describe('GET /api/conversations/:id', () => {
       await response.json();
     expect(body.data.conversation.id).toBe(conversationId);
     expect(body.data.messages.map((m) => m.id)).toContain(messageId);
+  });
+
+  it('returns the appointment booked from this conversation (conversation-detail appointment readback)', async () => {
+    const clinic = await createTestClinic('ConvDetailAppt');
+    const token = await signInAs(clinic.id, 'ConvDetailAppt', 'owner');
+    const patient = await createPatient(clinic.id, { phoneNumber: '+201000000901' });
+    const practitioner = await createTestStaffMember(clinic.id, 'ConvDetailApptPractitioner', {
+      role: 'practitioner',
+    });
+    const { conversationId } = await receiveInboundMessage(clinic.id, patient.id, 'I need a visit');
+    const appointment = await bookAppointment(clinic.id, {
+      patientId: patient.id,
+      practitionerId: practitioner.id,
+      conversationId,
+      startsAt: new Date('2026-09-17T09:00:00.000Z'),
+      endsAt: new Date('2026-09-17T09:30:00.000Z'),
+    });
+
+    const response = await detailRequest(conversationId, token);
+
+    expect(response.status).toBe(200);
+    const body: {
+      data: { appointments: Array<{ id: string; startsAt: string; endsAt: string }> };
+    } = await response.json();
+    expect(body.data.appointments).toEqual([
+      {
+        id: appointment.id,
+        practitionerId: practitioner.id,
+        startsAt: '2026-09-17T09:00:00.000Z',
+        endsAt: '2026-09-17T09:30:00.000Z',
+        status: 'booked',
+      },
+    ]);
+  });
+
+  it('returns an empty appointments array when no appointment is linked', async () => {
+    const clinic = await createTestClinic('ConvDetailApptNone');
+    const token = await signInAs(clinic.id, 'ConvDetailApptNone', 'owner');
+    const patient = await createPatient(clinic.id, { phoneNumber: '+201000000902' });
+    const { conversationId } = await receiveInboundMessage(clinic.id, patient.id, 'hello');
+
+    const response = await detailRequest(conversationId, token);
+
+    expect(response.status).toBe(200);
+    const body: { data: { appointments: unknown[] } } = await response.json();
+    expect(body.data.appointments).toEqual([]);
+  });
+
+  it("does not leak another clinic's conversation or its linked appointment (tenant isolation on the readback)", async () => {
+    const clinicOwn = await createTestClinic('ConvDetailApptIsoOwn');
+    const clinicOther = await createTestClinic('ConvDetailApptIsoOther');
+    const tokenOwn = await signInAs(clinicOwn.id, 'ConvDetailApptIsoOwn', 'owner');
+    const patientOther = await createPatient(clinicOther.id, { phoneNumber: '+201000000903' });
+    const practitionerOther = await createTestStaffMember(
+      clinicOther.id,
+      'ConvDetailApptIsoOther',
+      { role: 'practitioner' },
+    );
+    const { conversationId } = await receiveInboundMessage(
+      clinicOther.id,
+      patientOther.id,
+      'other clinic message',
+    );
+    await bookAppointment(clinicOther.id, {
+      patientId: patientOther.id,
+      practitionerId: practitionerOther.id,
+      conversationId,
+      startsAt: new Date('2026-09-17T09:00:00.000Z'),
+      endsAt: new Date('2026-09-17T09:30:00.000Z'),
+    });
+
+    const response = await detailRequest(conversationId, tokenOwn);
+
+    expect(response.status).toBe(404);
   });
 
   it('returns 404 for a valid UUID belonging to another clinic', async () => {

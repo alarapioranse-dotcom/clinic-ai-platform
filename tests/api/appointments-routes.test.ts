@@ -362,6 +362,57 @@ describe('POST /api/appointments', () => {
     expect(response.status).toBe(404);
   });
 
+  it('returns 404 for a conversationId belonging to a different clinic (cross-clinic access)', async () => {
+    // No existing test exercises a conversationId belonging to a DIFFERENT
+    // clinic from the requesting session's own clinic and patient (only
+    // same-clinic/different-patient, covered by "throws
+    // ConversationPatientMismatchError..." in
+    // tests/features/appointments/book-appointment.test.ts). Verified
+    // directly against this route: the response is 404
+    // `{"error":{"code":"not_found","message":"Patient, practitioner, or
+    // conversation not found."}}` — the same body `notFoundResponse()`
+    // returns for every other 404 case this route has. The rejection is
+    // structural, not an application-level check: `patientId` is already
+    // proven same-clinic by `appointments_patient_same_clinic`, and a
+    // patient belongs to exactly one clinic for its lifetime, so a
+    // `conversationId` whose own patient is a different clinic's patient can
+    // never satisfy `appointments_conversation_same_patient` (`conversation_id,
+    // patient_id) -> conversations (id, patient_id)` against *this* request's
+    // `patientId` — the database rejects it as a
+    // `ConversationPatientMismatchError`, indistinguishable from a
+    // nonexistent or same-clinic-wrong-patient conversationId (same
+    // 404-collapsing rationale as every other cross-tenant case in this
+    // codebase).
+    const clinicOwn = await createTestClinic('BookCrossConversationOwn');
+    const clinicOther = await createTestClinic('BookCrossConversationOther');
+    const tokenOwn = await signInAs(clinicOwn.id, 'BookCrossConversationOwn', 'owner');
+    const patientOwn = await createPatient(clinicOwn.id, { phoneNumber: '+201000003006' });
+    const practitionerOwn = await createTestStaffMember(clinicOwn.id, 'BookCrossConversationOwn', {
+      role: 'practitioner',
+    });
+    const patientOther = await createPatient(clinicOther.id, { phoneNumber: '+201000003007' });
+    const { conversationId: conversationIdOther } = await receiveInboundMessage(
+      clinicOther.id,
+      patientOther.id,
+      'other clinic message',
+    );
+
+    const response = await bookRoute(
+      postRequest('http://localhost/api/appointments', tokenOwn, {
+        patientId: patientOwn.id,
+        practitionerId: practitionerOwn.id,
+        conversationId: conversationIdOther,
+        startsAt: '2026-09-17T09:00:00.000Z',
+        endsAt: '2026-09-17T09:30:00.000Z',
+      }),
+    );
+
+    expect(response.status).toBe(404);
+    const body: { error: { code: string; message: string } } = await response.json();
+    expect(body.error.code).toBe('not_found');
+    expect(body.error.message).toBe('Patient, practitioner, or conversation not found.');
+  });
+
   it('returns 409 with the stable message for a slot that is no longer available', async () => {
     const clinic = await createTestClinic('BookUnavailable');
     const token = await signInAs(clinic.id, 'BookUnavailable', 'owner');

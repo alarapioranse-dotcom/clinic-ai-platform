@@ -49,9 +49,16 @@ function todayUtcDateString(): string {
 export function BookAppointment({
   conversationId,
   patientId,
+  onBooked,
 }: {
   conversationId: string;
   patientId: string;
+  /** Called after a successful booking so the parent can re-fetch the
+   * conversation detail and pick up the now-persisted appointment via the
+   * conversation-detail appointment readback — without this, the
+   * confirmation below is the only place a freshly booked appointment is
+   * visible until the next full reload. */
+  onBooked?: () => void;
 }) {
   const [practitionersState, setPractitionersState] = useState<PractitionersState>({
     status: 'loading',
@@ -125,6 +132,7 @@ export function BookAppointment({
       const body: { data: BookedAppointment } = await response.json();
       setBooking({ status: 'booked', appointment: body.data });
       setSlotsState({ status: 'idle' });
+      onBooked?.();
     } catch {
       setBooking({ status: 'error' });
     }

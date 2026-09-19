@@ -28,9 +28,26 @@ export interface Message {
   sentAt: Date;
 }
 
+/**
+ * Read-only projection of an `appointments` row for the conversation-detail
+ * appointment readback (roadmap P4 closure slice) — just enough for the
+ * conversation-detail view to render a linked appointment, not the full
+ * `Appointment` shape `src/features/appointments` owns. `patientId` is
+ * omitted deliberately: it's always this conversation's own patient
+ * (`appointments_conversation_same_patient`), so it would be redundant here.
+ */
+export interface LinkedAppointment {
+  id: string;
+  practitionerId: string;
+  startsAt: Date;
+  endsAt: Date;
+  status: string;
+}
+
 export interface ConversationWithMessages {
   conversation: Conversation;
   messages: Message[];
+  appointments: LinkedAppointment[];
 }
 
 interface ConversationRow {
@@ -56,6 +73,14 @@ interface MessageDetailRow {
   sender_staff_id: string | null;
   content: string;
   sent_at: Date;
+}
+
+interface AppointmentSummaryRow {
+  id: string;
+  practitioner_id: string;
+  starts_at: Date;
+  ends_at: Date;
+  status: string;
 }
 
 /**
@@ -95,6 +120,16 @@ function toMessage(row: MessageDetailRow): Message {
     senderStaffId: row.sender_staff_id,
     content: row.content,
     sentAt: row.sent_at,
+  };
+}
+
+function toLinkedAppointment(row: AppointmentSummaryRow): LinkedAppointment {
+  return {
+    id: row.id,
+    practitionerId: row.practitioner_id,
+    startsAt: row.starts_at,
+    endsAt: row.ends_at,
+    status: row.status,
   };
 }
 
@@ -250,11 +285,23 @@ export async function listConversations(client: PoolClient): Promise<Conversatio
 }
 
 /**
- * Looks up one conversation by ID, plus its messages in chronological order.
- * Returns `null` when no such conversation is visible in the caller's
- * transaction — RLS makes "doesn't exist" and "exists, wrong clinic"
- * indistinguishable here, same as `getPatientsForClinic`'s pattern; this
- * function does not run any separate cross-clinic existence check.
+ * Looks up one conversation by ID, plus its messages in chronological order
+ * and any appointments booked from it (conversation-detail appointment
+ * readback, roadmap P4 closure slice). Returns `null` when no such
+ * conversation is visible in the caller's transaction — RLS makes "doesn't
+ * exist" and "exists, wrong clinic" indistinguishable here, same as
+ * `getPatientsForClinic`'s pattern; this function does not run any separate
+ * cross-clinic existence check.
+ *
+ * The `appointments` query is a direct read of the `appointments` table
+ * (owned by `src/features/appointments`, whose own migration
+ * `db/migrations/0011_appointments.sql` and RLS policy are what actually
+ * enforce tenant isolation for it) rather than an import of that feature's
+ * internals — the same "query the shared table directly" pattern
+ * `src/features/appointments/repository.ts` itself uses for `clinics`,
+ * `staff_members`, `patients`, and `conversations`. No new table, migration,
+ * or schema change: `appointments.conversation_id` already exists and is
+ * already populated by `bookAppointment` — this only adds a read of it.
  */
 export async function getConversationWithMessages(
   client: PoolClient,
@@ -280,8 +327,17 @@ export async function getConversationWithMessages(
     [conversationId],
   );
 
+  const { rows: appointmentRows } = await client.query<AppointmentSummaryRow>(
+    `SELECT id, practitioner_id, starts_at, ends_at, status
+     FROM appointments
+     WHERE conversation_id = $1
+     ORDER BY starts_at`,
+    [conversationId],
+  );
+
   return {
     conversation: toConversation(conversationRow),
     messages: messageRows.map(toMessage),
+    appointments: appointmentRows.map(toLinkedAppointment),
   };
 }

@@ -24,7 +24,7 @@ decisions don't need one.
 | [0015](./0015-appointment-reschedule-update-in-place.md)    | Appointment rescheduling is update-in-place, not a new appointment | Accepted |
 | [0016](./0016-clinic-working-hours-iana-timezone.md)        | Clinic working hours are interpreted in the clinic's IANA timezone | Accepted |
 | [0017](./0017-clinic-working-hours-dst-transitions.md)      | Clinic working-hours behavior at DST gap/overlap transitions       | Accepted |
-| [0018](./0018-knowledge-document-object-storage.md)         | Knowledge-document raw-file object storage                         | Proposed |
+| [0018](./0018-knowledge-document-object-storage.md)         | Knowledge-document raw-file object storage                         | Accepted |
 
 0010 is intentionally unassigned — reserved for the audit-log erasure strategy named as a follow-up
 in [ADR-0009](./0009-data-residency.md), not yet written.

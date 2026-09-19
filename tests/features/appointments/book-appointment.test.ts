@@ -166,6 +166,37 @@ describe('bookAppointment', () => {
     ).rejects.toThrow(ConversationPatientMismatchError);
   });
 
+  it('throws ConversationPatientMismatchError when conversationId belongs to a conversation in a different clinic', async () => {
+    // Companion to "...when conversationId belongs to a different patient"
+    // above (same clinic) — this is the cross-clinic case: the requesting
+    // clinic's own patientId can never match a different clinic's
+    // conversation's patient_id (a patient belongs to exactly one clinic for
+    // its lifetime), so `appointments_conversation_same_patient` rejects it
+    // the same way, not merely a coincidental same-clinic mismatch.
+    const clinicOwn = await createTestClinic('BookConvCrossClinicOwn');
+    const clinicOther = await createTestClinic('BookConvCrossClinicOther');
+    const patientOwn = await createPatient(clinicOwn.id, { phoneNumber: '+201000002015' });
+    const practitionerOwn = await createTestStaffMember(clinicOwn.id, 'BookConvCrossClinicOwn', {
+      role: 'practitioner',
+    });
+    const patientOther = await createPatient(clinicOther.id, { phoneNumber: '+201000002016' });
+    const { conversationId } = await receiveInboundMessage(
+      clinicOther.id,
+      patientOther.id,
+      'other clinic message',
+    );
+
+    await expect(
+      bookAppointment(clinicOwn.id, {
+        patientId: patientOwn.id,
+        practitionerId: practitionerOwn.id,
+        conversationId,
+        startsAt: new Date('2026-09-17T09:00:00.000Z'),
+        endsAt: new Date('2026-09-17T09:30:00.000Z'),
+      }),
+    ).rejects.toThrow(ConversationPatientMismatchError);
+  });
+
   it('throws AppointmentConflictError for an overlapping booking, with the stable user-facing message', async () => {
     const clinic = await createTestClinic('BookConflict');
     const patient = await createPatient(clinic.id, { phoneNumber: '+201000002009' });

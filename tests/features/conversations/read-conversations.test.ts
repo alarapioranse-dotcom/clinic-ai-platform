@@ -6,7 +6,8 @@ import {
   listConversationsForClinic,
   getConversation,
 } from '@/features/conversations';
-import { createTestClinic } from '../../fixtures';
+import { bookAppointment } from '@/features/appointments';
+import { createTestClinic, createTestStaffMember } from '../../fixtures';
 
 /**
  * Feature-level coverage for the P3-B read path (`listConversationsForClinic`,
@@ -80,6 +81,76 @@ describe('getConversation', () => {
       patientOther.id,
       'hello from the other clinic',
     );
+
+    const result = await getConversation(clinicOwn.id, conversationId);
+
+    expect(result).toBeNull();
+  });
+
+  /**
+   * Conversation-detail appointment readback (roadmap P4 closure slice):
+   * booking persists the appointment and its conversation link
+   * (`bookAppointment`, `db/migrations/0011_appointments.sql`), but until
+   * this slice `getConversation` never read it back — this is the read side.
+   */
+  it('includes an appointment booked from this conversation', async () => {
+    const clinic = await createTestClinic('ReadConvApptLinked');
+    const patient = await createPatient(clinic.id, { phoneNumber: '+201000000504' });
+    const practitioner = await createTestStaffMember(clinic.id, 'ReadConvApptLinked', {
+      role: 'practitioner',
+    });
+    const { conversationId } = await receiveInboundMessage(clinic.id, patient.id, 'I need a visit');
+    const appointment = await bookAppointment(clinic.id, {
+      patientId: patient.id,
+      practitionerId: practitioner.id,
+      conversationId,
+      startsAt: new Date('2026-09-17T09:00:00.000Z'),
+      endsAt: new Date('2026-09-17T09:30:00.000Z'),
+    });
+
+    const result = await getConversation(clinic.id, conversationId);
+
+    expect(result).not.toBeNull();
+    expect(result?.appointments).toEqual([
+      {
+        id: appointment.id,
+        practitionerId: practitioner.id,
+        startsAt: new Date('2026-09-17T09:00:00.000Z'),
+        endsAt: new Date('2026-09-17T09:30:00.000Z'),
+        status: 'booked',
+      },
+    ]);
+  });
+
+  it('returns an empty appointments array when no appointment is linked to this conversation', async () => {
+    const clinic = await createTestClinic('ReadConvApptNone');
+    const patient = await createPatient(clinic.id, { phoneNumber: '+201000000505' });
+    const { conversationId } = await receiveInboundMessage(clinic.id, patient.id, 'hello');
+
+    const result = await getConversation(clinic.id, conversationId);
+
+    expect(result?.appointments).toEqual([]);
+  });
+
+  it("does not leak another clinic's conversation or its linked appointment (tenant isolation on the readback)", async () => {
+    const clinicOwn = await createTestClinic('ReadConvApptIsoOwn');
+    const clinicOther = await createTestClinic('ReadConvApptIsoOther');
+    const patientOther = await createPatient(clinicOther.id, { phoneNumber: '+201000000506' });
+    const practitionerOther = await createTestStaffMember(clinicOther.id, 'ReadConvApptIsoOther', {
+      role: 'practitioner',
+    });
+    const { conversationId } = await receiveInboundMessage(
+      clinicOther.id,
+      patientOther.id,
+      'other clinic message',
+    );
+    await bookAppointment(clinicOther.id, {
+      patientId: patientOther.id,
+      practitionerId: practitionerOther.id,
+      conversationId,
+      startsAt: new Date('2026-09-17T09:00:00.000Z'),
+      endsAt: new Date('2026-09-17T09:30:00.000Z'),
+    });
 
     const result = await getConversation(clinicOwn.id, conversationId);
 

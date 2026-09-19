@@ -14,7 +14,11 @@
  * `listConversationsForClinic`/`getConversation`: the P3-B read path behind
  * `GET /api/conversations` and `GET /api/conversations/:id`. Read-only —
  * staff replies, AI, escalations, and status are explicitly out of scope
- * (P3-C and later).
+ * (P3-C and later). `getConversation`'s result also includes any
+ * appointments booked from this conversation (conversation-detail
+ * appointment readback, roadmap P4 closure slice) — booking itself still
+ * belongs entirely to `src/features/appointments`; this is a read-only
+ * projection of `appointments` rows already linked via `conversation_id`.
  *
  * `sendStaffReply`: the P3-C write path behind `POST
  * /api/conversations/:id/messages` (owner/admin/receptionist only —
@@ -42,9 +46,16 @@ import {
   type Conversation,
   type Message,
   type ConversationWithMessages,
+  type LinkedAppointment,
 } from './repository';
 
-export type { ReceiveInboundMessageResult, Conversation, Message, ConversationWithMessages };
+export type {
+  ReceiveInboundMessageResult,
+  Conversation,
+  Message,
+  ConversationWithMessages,
+  LinkedAppointment,
+};
 export { ConversationNotFoundError };
 
 export async function receiveInboundMessage(

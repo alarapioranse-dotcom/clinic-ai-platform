@@ -36,12 +36,12 @@ requirement — it is a misreading of the parenthetical in the first bullet.**
 Evidence:
 
 - `docs/03-roadmap.md` P5 bullet 1 reads "knowledge base (**services, pricing, hours,
-  policies**)" — a parenthetical listing *examples of unstructured knowledge-base content*, not
+  policies**)" — a parenthetical listing _examples of unstructured knowledge-base content_, not
   a distinct feature.
 - `docs/01-project-plan.md:10-11`: "Ground automated replies in a clinic's own knowledge base
   (services, pricing, hours, policies)." Identical framing, same source phrase.
 - ADR-0008 (Accepted, Phase: P5) repeats the same parenthetical when describing expected
-  knowledge-base *size* ("services, pricing, hours, policies"), consistent with content inside
+  knowledge-base _size_ ("services, pricing, hours, policies"), consistent with content inside
   documents, not a structured pricing entity.
 - Separately, `docs/domain/01-entities.md` defines a structured **Service** entity (name,
   `ServiceDuration`, `Money` price, Active/Retired lifecycle) referenced by the **Appointment**
@@ -51,8 +51,9 @@ Evidence:
   `docs/product/05-screen-inventory.md:26` — not P5.
 
 So there are two unrelated things that both use the word "services":
-1. Unstructured mentions of services/pricing/hours/policies *as knowledge-base document
-   content* — this is P5, per the roadmap, and is what "Knowledge base and AI" means.
+
+1. Unstructured mentions of services/pricing/hours/policies _as knowledge-base document
+   content_ — this is P5, per the roadmap, and is what "Knowledge base and AI" means.
 2. A structured `Service` entity with a price, referenced by `Appointment` — this is P4/domain
    scope per the docs that define it, already excluded from the P4 migration (see §7 below), and
    not mentioned anywhere in the P5 roadmap section.
@@ -61,12 +62,12 @@ Do not treat (2) as authorized by P5. The roadmap text does not say it.
 
 ## 3. Requirement-by-requirement: code / docs-only / absent
 
-| P5 requirement | Status | Evidence |
-| --- | --- | --- |
-| Clinic can maintain its own knowledge base | **Docs only.** No code. | `docs/technical/01-database-schema.md:519` defines `knowledge_documents` (CREATE TABLE, RLS policy). `docs/technical/06-knowledge-document-storage.md` defines upload/processing lifecycle and object storage. `docs/technical/03-api-contracts.md:117-129` defines the `/api/knowledge-documents*` routes. **None of this exists in `db/migrations/` (0001-0012) or `src/app/api/`** — confirmed by directory listing, no `knowledge_document` string anywhere in `db/migrations/*.sql`, no route under `src/app/api/`. `src/features/knowledge-base/` exists only as a placeholder README ("Empty by design in Phase 0"). |
-| Automated replies grounded in the knowledge base | **Docs only.** No code. | `docs/technical/05-ai-pipeline.md` fully specifies the pipeline (INTAKE → PRE-CHECK → RETRIEVE → CLASSIFY+GENERATE → REPLY/ESCALATE) and the `AssistantProvider` interface, explicitly marked "documentation, not a src/ file." No `AssistantProvider`, no retrieval code, no AI/LLM call of any kind exists in `src/` — a repo-wide search for `openai`, `anthropic`, `assistantprovider` in `src/` returns zero matches. `src/features/conversations/index.ts` explicitly states "staff replies, AI, escalations, and status are explicitly out of scope" for the shipped P3 slice, and "no AI/assistant sender type" exists yet. |
-| `knowledge-base` feature owns retrieval behind a public entry point | **Absent.** | `src/features/knowledge-base/README.md` is the only file in that directory — no `index.ts`, no public entry point, no retrieval logic. |
-| AI/LLM calls isolated behind an interface | **Docs only.** | The `AssistantProvider` interface is fully designed in `docs/technical/05-ai-pipeline.md` but is explicitly labeled illustrative/documentation-only. No corresponding TypeScript interface exists in `src/`. |
+| P5 requirement                                                      | Status                  | Evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ------------------------------------------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Clinic can maintain its own knowledge base                          | **Docs only.** No code. | `docs/technical/01-database-schema.md:519` defines `knowledge_documents` (CREATE TABLE, RLS policy). `docs/technical/06-knowledge-document-storage.md` defines upload/processing lifecycle and object storage. `docs/technical/03-api-contracts.md:117-129` defines the `/api/knowledge-documents*` routes. **None of this exists in `db/migrations/` (0001-0012) or `src/app/api/`** — confirmed by directory listing, no `knowledge_document` string anywhere in `db/migrations/*.sql`, no route under `src/app/api/`. `src/features/knowledge-base/` exists only as a placeholder README ("Empty by design in Phase 0").         |
+| Automated replies grounded in the knowledge base                    | **Docs only.** No code. | `docs/technical/05-ai-pipeline.md` fully specifies the pipeline (INTAKE → PRE-CHECK → RETRIEVE → CLASSIFY+GENERATE → REPLY/ESCALATE) and the `AssistantProvider` interface, explicitly marked "documentation, not a src/ file." No `AssistantProvider`, no retrieval code, no AI/LLM call of any kind exists in `src/` — a repo-wide search for `openai`, `anthropic`, `assistantprovider` in `src/` returns zero matches. `src/features/conversations/index.ts` explicitly states "staff replies, AI, escalations, and status are explicitly out of scope" for the shipped P3 slice, and "no AI/assistant sender type" exists yet. |
+| `knowledge-base` feature owns retrieval behind a public entry point | **Absent.**             | `src/features/knowledge-base/README.md` is the only file in that directory — no `index.ts`, no public entry point, no retrieval logic.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| AI/LLM calls isolated behind an interface                           | **Docs only.**          | The `AssistantProvider` interface is fully designed in `docs/technical/05-ai-pipeline.md` but is explicitly labeled illustrative/documentation-only. No corresponding TypeScript interface exists in `src/`.                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 ## 4. pgvector and AI vendor status
 
@@ -76,13 +77,13 @@ no-double-booking EXCLUDE constraint). No migration creates the `pgvector` exten
 migration creates `knowledge_document_chunks` or any embedding column/table. A full-repo search
 for `pgvector` and `vector(` outside `docs/` returns zero matches.
 
-ADR-0008 *decides* pgvector-in-Postgres as the embeddings-storage architecture ("Accepted —
+ADR-0008 _decides_ pgvector-in-Postgres as the embeddings-storage architecture ("Accepted —
 2026-08-30"), and that decision is real and correctly recorded — but it is a decision on paper
 only. It has not been executed against any migration, and it is therefore **not trusted on the
 production catalog** (production is at migrations 0001-0012, none of which touch pgvector or any
 knowledge/embedding table).
 
-**AI vendor: none selected.** ADR-0007 (Accepted) is explicit that it fixes *constraints* a
+**AI vendor: none selected.** ADR-0007 (Accepted) is explicit that it fixes _constraints_ a
 future vendor must meet (EU-region inference endpoint, Article-9-scoped DPA, no training on
 customer data, no patient identifiers in prompts) and explicitly states "**No vendor is named at
 this phase**" and that vendor selection is deferred to a future, separate ADR. No such
@@ -115,6 +116,7 @@ Quoted verbatim from `docs/adr/0011-regulatory-scope-boundaries.md` §6:
 > E1-E4 are acceptance criteria for P5. E5-E7 ship with it, not after.
 
 **None of E1-E7 exist in code.** Verified:
+
 - No intent-enum type/validator exists in `src/` (grep for "intent" in `src/` matches only prose
   comments in `src/features/conversations/index.ts` and its README, unrelated to a closed schema).
 - No verbatim-span-matching logic exists (no knowledge-document quoting code exists at all yet —
@@ -171,7 +173,7 @@ appointments` block). `src/features/appointments/index.ts`'s own doc comment rep
 P4-scope boundary implicitly by never mentioning a service.
 
 This is a live contradiction worth flagging (§11): `docs/domain/01-entities.md:236,245`
-(Deliverable B, Accepted-adjacent design doc) states as a *validation rule* that Appointment
+(Deliverable B, Accepted-adjacent design doc) states as a _validation rule_ that Appointment
 "references exactly one Patient, one Service, one Practitioner" — stated as if already decided —
 while the actual accepted ADR-0014 and the shipped P4 migration both leave it explicitly
 unresolved and unimplemented. The domain doc is ahead of what was actually decided and built.
@@ -202,7 +204,7 @@ resolution that a services/pricing settings UI is not part of P5's minimum surfa
 
 - `knowledge_documents`: already fully specified with RLS in
   `docs/technical/01-database-schema.md:544-546` (`ENABLE ROW LEVEL SECURITY`, `FORCE ROW LEVEL
-  SECURITY`, `tenant_isolation` policy keyed on `current_setting('app.current_clinic_id', true)`)
+SECURITY`, `tenant_isolation` policy keyed on `current_setting('app.current_clinic_id', true)`)
   — same shape as every existing tenant-scoped table, consistent with ADR-0006. Not yet migrated.
 - Embedding/chunk storage (whatever table ADR-0008's decision is finally executed as, e.g.
   `knowledge_document_chunks`): ADR-0008 itself specifies the same RLS shape, tenant-scoped by
@@ -253,23 +255,23 @@ code.
 
 ## Gap analysis summary
 
-| Area | Exists in code | Exists in docs only | Absent entirely |
-| --- | --- | --- | --- |
-| `knowledge_documents` table + RLS | | ✅ (`01-database-schema.md`) | |
-| Object storage / upload lifecycle | | ✅ (`06-knowledge-document-storage.md`) | |
-| `/api/knowledge-documents*` routes | | ✅ (`03-api-contracts.md`) | |
-| `knowledge-base` feature public entry point | | | ✅ |
-| pgvector extension | | ✅ (ADR-0008 decision) | ✅ (not migrated) |
-| Embedding/chunk table | | ✅ (ADR-0008 shape) | ✅ (not migrated) |
-| AI vendor selection | | | ✅ (ADR-0007 explicitly defers) |
-| `AssistantProvider` interface | | ✅ (`05-ai-pipeline.md`, marked illustrative) | ✅ (no `src/` file) |
-| E1 closed intent schema | | ✅ (ADR-0011) | ✅ |
-| E2 verbatim-span check | | ✅ (ADR-0011) | ✅ |
-| E3 pre-model input gate | | ✅ (ADR-0011) | ✅ |
-| E4 transport-level disclosure | | ✅ (ADR-0011) | ✅ |
-| E5-E7 (CI suite, CODEOWNERS, metrics) | | ✅ (ADR-0011) | ✅ |
-| `/dashboard/knowledge-base` UI | | ✅ (screen inventory) | ✅ |
-| Structured `Service`/pricing entity | | ✅ (domain doc, P4-adjacent, not P5) | ✅ (no table, no UI) |
+| Area                                        | Exists in code | Exists in docs only                           | Absent entirely                 |
+| ------------------------------------------- | -------------- | --------------------------------------------- | ------------------------------- |
+| `knowledge_documents` table + RLS           |                | ✅ (`01-database-schema.md`)                  |                                 |
+| Object storage / upload lifecycle           |                | ✅ (`06-knowledge-document-storage.md`)       |                                 |
+| `/api/knowledge-documents*` routes          |                | ✅ (`03-api-contracts.md`)                    |                                 |
+| `knowledge-base` feature public entry point |                |                                               | ✅                              |
+| pgvector extension                          |                | ✅ (ADR-0008 decision)                        | ✅ (not migrated)               |
+| Embedding/chunk table                       |                | ✅ (ADR-0008 shape)                           | ✅ (not migrated)               |
+| AI vendor selection                         |                |                                               | ✅ (ADR-0007 explicitly defers) |
+| `AssistantProvider` interface               |                | ✅ (`05-ai-pipeline.md`, marked illustrative) | ✅ (no `src/` file)             |
+| E1 closed intent schema                     |                | ✅ (ADR-0011)                                 | ✅                              |
+| E2 verbatim-span check                      |                | ✅ (ADR-0011)                                 | ✅                              |
+| E3 pre-model input gate                     |                | ✅ (ADR-0011)                                 | ✅                              |
+| E4 transport-level disclosure               |                | ✅ (ADR-0011)                                 | ✅                              |
+| E5-E7 (CI suite, CODEOWNERS, metrics)       |                | ✅ (ADR-0011)                                 | ✅                              |
+| `/dashboard/knowledge-base` UI              |                | ✅ (screen inventory)                         | ✅                              |
+| Structured `Service`/pricing entity         |                | ✅ (domain doc, P4-adjacent, not P5)          | ✅ (no table, no UI)            |
 
 **Bottom line:** every P5 roadmap requirement and every E1-E4 acceptance-blocking mechanism is
 either design-doc-only or entirely absent from the codebase. Nothing found is "already shipped"
@@ -321,7 +323,7 @@ moves P5 forward without depending on the AI-vendor decision:
    pgvector, only object storage for the raw file (per `06-knowledge-document-storage.md`).
 3. Land E1 (closed intent schema) and E6 (CODEOWNERS + CI check on the intent enum/policy files)
    as structural work — these are enforceable without a model call existing yet, since E1 is a
-   validator on model *output* shape and E6 is a repo-process control.
+   validator on model _output_ shape and E6 is a repo-process control.
 
 Retrieval (pgvector execution), `AssistantProvider`, and E2-E5/E7 all depend on the vendor
 decision and/or the retrieval table existing first, so they sequence after the above.

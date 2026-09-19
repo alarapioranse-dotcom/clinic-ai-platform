@@ -75,62 +75,103 @@ settled directly, rather than as an open axis this ADR keeps weighing candidate-
 
 ## Decision
 
-**Owner ruling required, partial so far.** This record sets out the remaining candidates and their
-trade-offs against the inherited constraints; it does not select one. Status stays `Proposed` until
-Ahmed rules on a specific provider, recorded as a human comment on the pull request, per charter
-§10 and the pattern [ADR-0017](./0017-clinic-working-hours-dst-transitions.md) followed.
+Ahmed ruled on all seven items, in comments on this pull request. Status stays `Proposed`; the
+owner writes the Status line and the `docs/adr/README.md` index row himself once this record is
+accepted.
 
-### Owner ruling so far — jurisdiction
+### 1. Upload path
 
-Ahmed ruled directly on the jurisdiction axis, in a comment on this pull request: an
-EU-headquartered provider is chosen regardless of how narrow the CLOUD Act exposure is for
-non-personal-data content (see the scope note above) — "it closes the question outright rather
-than requiring anyone to reason about how narrow the exposure is, and at our scale it costs
-nothing." That ruling removes AWS S3, Cloudflare R2, and Backblaze B2 from further consideration —
-not because any of the three fails an inherited constraint, but because the three EU-headquartered
-candidates (Scaleway, OVHcloud, Hetzner) satisfy the same constraints without the jurisdiction
-question existing at all. This is recorded as a settled sub-decision, not as this ADR's own
-reasoning; the candidate comparison below reflects it. The provider itself among the three is still
-open, blocked on the upload-path question below.
+Uploads go browser-to-object-store, direct, via presigned PUT. The file's bytes must never pass
+through the Next.js process. On the Render free plan, buffering a multi-megabyte PDF per concurrent
+upload in a constrained Node process is a structural mistake, not a tuning problem. This removes
+that class of failure entirely rather than sizing around it. This is the item that was blocking
+provider selection, so it decides the rest.
 
-### What this ADR must decide (owner's call)
+### 2. Provider
 
-1. **Provider**, from the three EU-headquartered candidates below. Blocked on item 3.
-2. **EU/EEA region** (Scaleway, OVHcloud, and Hetzner each offer more than one).
-3. **Upload path** — browser-to-object-store direct via presigned PUT, or browser-to-our-Next.js-
-   server-to-object-store — since this changes which of the three remains viable without a proxy
-   workaround. See "Upload path" below; this is the question the owner's ruling identifies as
-   blocking provider selection.
-4. **Bucket and storage boundary** — one bucket for all clinics with key prefixing (e.g.
-   `storage_key = clinic_id/document_id`), or a bucket per clinic. See "Bucket boundary" below.
-5. **Encryption and retention assumptions** — only those genuinely required. No retention policy is
-   invented here: [ADR-0009](./0009-data-residency.md) item 6 already established that this
-   platform enforces no default clinical retention period and never auto-deletes clinical records
-   absent explicit tenant configuration. The only retention-adjacent fact this ADR need record is
-   whatever the chosen vendor does or does not require configuring by default (e.g. default
-   lifecycle rules that must be explicitly disabled to avoid contradicting ADR-0009 item 6).
-6. **The presigned-URL mechanism**, inheriting the private-object requirement above and the upload
-   path chosen under item 3.
-7. **How the application obtains storage credentials and configuration** — e.g. long-lived static
-   keys in environment variables vs. some other credential-issuance path, and how that interacts
-   with Render as the deployment target.
+Scaleway Object Storage. Of the three EU-headquartered candidates, Scaleway is the only one where
+both presigned URLs and CORS configuration are first-class and documented against standard S3
+tooling. Under this upload path, CORS is load-bearing, not incidental.
+
+OVHcloud is set aside despite free egress: CORS cannot be configured through the standard
+`aws s3api put-bucket-cors` command, requiring OVHcloud's own path instead. Tooling friction is a
+present cost for a workflow run entirely from a phone via Termux, while free egress is a future
+benefit for one demo clinic with no customers. Revisit if egress ever becomes material.
+
+Hetzner is set aside despite being cheapest: presigned PUTs from a browser are blocked by missing
+CORS response headers, requiring a proxy component. Under this upload path that is disqualifying —
+a proxy is not built and maintained to work around a provider gap when another provider has no gap.
+
+### 3. Region
+
+FR-PAR (Paris) — Scaleway's primary region with the fullest feature coverage. Satisfies
+[ADR-0009](./0009-data-residency.md)'s EU/EEA residency.
+
+### 4. Bucket boundary
+
+One bucket, key prefixed by `clinic_id` — this ADR's own conclusion, accepted as-is.
+`06-knowledge-document-storage.md` already places tenant isolation in the RLS-scoped row lookup,
+not in bucket ACLs. Per-clinic buckets would add operational cost and no isolation guarantee.
+`storage_key` takes the form `clinic_id/document_id`.
+
+### 5. Encryption and retention
+
+Minimum only. Server-side encryption at rest if Scaleway provides it by default; no key-management
+scheme is built. No lifecycle rules — if Scaleway applies any by default, they must be explicitly
+disabled, since [ADR-0009](./0009-data-residency.md) item 6 forbids default clinical retention and
+auto-deletion absent explicit tenant configuration. That check is recorded as a provisioning step
+(see Consequences).
+
+### 6. Credentials
+
+Render environment variables, the same pattern as `DATABASE_URL`. No credentials in the repository,
+none in a screenshot, none in a commit.
+
+### 7. MinIO stand-in
+
+Approved for development only — the ADR's own reasoning is accepted. A local S3-API stand-in
+implements the documented model against the same API rather than inventing one, which is the
+distinction that made PR #65's model unacceptable. It carries no EU-residency guarantee and is
+never production-adjacent.
+
+## Consequences
+
+Retrieval and download must continue to go through the RLS-scoped row lookup
+`06-knowledge-document-storage.md` already specifies (Decision item 2's selection does not change
+that), and no credential or configuration decision made under Decision item 6 may introduce a path
+to an object or bucket that bypasses that lookup. The upload path decided under Decision item 1
+(direct presigned PUT) requires Scaleway's CORS configuration to be set correctly before any upload
+from the browser can succeed — see "Upload path" below — and means the Render web service's own
+memory and request-handling budget is never a factor in upload size or concurrency. A provisioning
+step, per Decision item 5: check whether Scaleway applies any default lifecycle rule to a newly
+created bucket, and explicitly disable it if so — [ADR-0009](./0009-data-residency.md) item 6
+forbids default clinical retention and auto-deletion absent explicit tenant configuration, so a
+default lifecycle rule left enabled would contradict it.
+
+## Alternatives considered
+
+The subsections below are the alternatives-considered record for this ADR: six candidates
+originally researched, three (AWS S3, Cloudflare R2, Backblaze B2) set aside on the owner's
+jurisdiction ruling without failing a technical constraint, three (Scaleway, OVHcloud, Hetzner)
+compared against the upload-path question that decided provider selection above.
 
 ### Considered and set aside — AWS S3, Cloudflare R2, Backblaze B2
 
 All three satisfy every constraint this ADR inherits: EU/EEA region, S3-API compatibility,
 presigned-URL support, and an available DPA. They are set aside here solely on the owner's
-jurisdiction ruling above — each is a US-headquartered company (AWS, Cloudflare, Backblaze), so
-each carries a US-nexus CLOUD Act exposure that an EU-headquartered vendor does not, regardless of
-where the data itself resides. Cloudflare R2 in particular would otherwise have been a strong
-candidate on pricing (zero egress fees) and Backblaze B2 on raw storage cost; both are recorded
-here for completeness, not because either failed a technical constraint. Not re-verified further
-in this pass, since the owner ruling makes the distinction moot for provider selection.
+jurisdiction ruling — each is a US-headquartered company (AWS, Cloudflare, Backblaze), so each
+carries a US-nexus CLOUD Act exposure that an EU-headquartered vendor does not, regardless of where
+the data itself resides. Cloudflare R2 in particular would otherwise have been a strong candidate
+on pricing (zero egress fees) and Backblaze B2 on raw storage cost; both are recorded here for
+completeness, not because either failed a technical constraint. Not re-verified further in this
+pass, since the owner's ruling makes the distinction moot for provider selection.
 
 ### Candidate comparison — Scaleway, OVHcloud, Hetzner
 
 Re-researched this pass, sourced individually, against: presigned-URL support, DPA availability and
 document name, egress pricing, and CORS support for direct browser uploads (the specific item the
-owner's own verification flagged for Hetzner).
+owner's own verification flagged for Hetzner). **Selection status (Decision item 2): Scaleway
+SELECTED; OVHcloud and Hetzner SET ASIDE.**
 
 | Candidate                                                                     | Presigned URLs                                                                                                                                                                     | DPA                                                                                                                                                                                                                                                                                                                                                                           | Egress pricing                                                                                                                                                                                                                                                                                                                                                                                  | CORS (for direct browser presigned uploads)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -141,6 +182,16 @@ owner's own verification flagged for Hetzner).
 All three satisfy the inherited constraints (EU/EEA region, S3-API compatibility, private
 objects/presigned-URL access) and the owner's jurisdiction ruling. The differentiator the owner's
 own comment identifies is CORS support for direct browser uploads, addressed next.
+
+**Scaleway — SELECTED**, per Decision item 2: both presigned URLs and CORS configuration are
+first-class and documented against standard S3 tooling, and under the selected upload path CORS is
+load-bearing, not incidental. **OVHcloud — SET ASIDE**, per Decision item 2: CORS cannot be
+configured through the standard `aws s3api put-bucket-cors` command, requiring OVHcloud's own path
+instead — tooling friction is a present cost for a workflow run entirely from a phone via Termux,
+against free egress as a future benefit that doesn't matter at current scale. **Hetzner — SET
+ASIDE**, per Decision item 2: presigned PUTs from a browser are blocked by missing CORS response
+headers, requiring a proxy component, which is disqualifying under the selected upload path despite
+Hetzner being the cheapest of the three.
 
 **Render fit, generally:** none of the three has a native Render marketplace integration today
 (Render's own object storage offering is in alpha and is not itself a general-purpose S3 target
@@ -155,9 +206,9 @@ phone-only workflow is more friction than the other two, if the direct-upload pa
 
 ### Upload path
 
-Not settled here — this is the specific question the owner's comment identifies as blocking
-provider selection. Recorded as two options with their implications, per the owner's instruction to
-either settle it or state explicitly that it is deferred and what each path implies.
+**Option A — SELECTED, per Decision item 1.** This is the item the owner's comment identified as
+blocking provider selection; the owner's ruling decided it, and decided the rest in turn. Recorded
+below as both options with their implications, for the record.
 
 **Option A — direct browser-to-object-store, via presigned PUT.** The Next.js server issues a
 short-lived presigned PUT URL (after the usual RLS-scoped authorization check) and returns it to
@@ -172,10 +223,11 @@ file body.
   are applied, per the owner's own verification and the independent reports in the table above; a
   small CORS-adding proxy in front of the presigned URL is the documented workaround.
 - _Server memory / request limits:_ effectively zero — the file's bytes never pass through the
-  Next.js process, so this path scales independently of Render's plan RAM (e.g. the Starter plan's
-  512 MB, Standard's 2 GB — plan RAM figures from Render's public pricing, not independently
-  re-verified against Render's own docs in this pass) and independently of any Next.js API route
-  body-size configuration.
+  Next.js process, so this path scales independently of Render's plan RAM (our web service runs on
+  Render's **Free** plan — 512 MB RAM, 0.1 CPU, per Render's published 2026 compute-plan pricing;
+  direct fetch of Render's own pricing page was blocked in this research environment, so this figure
+  is corroborated via a secondary pricing aggregator rather than read first-hand off render.com) and
+  independently of any Next.js API route body-size configuration.
 - _Which providers remain viable:_ Scaleway and OVHcloud, without extra work. Hetzner, only with an
   added CORS-proxy component the other two don't need.
 
@@ -188,21 +240,25 @@ object store itself, using long-lived server-side credentials (never exposed to 
   gap stops being disqualifying.
 - _Server memory / request limits:_ becomes the real cost. The standard Next.js Node.js API-route
   runtime buffers the request body before handler code runs, so each concurrent upload holds its
-  full byte size in the server process's memory for the duration of the request — on Render's
-  Starter plan (512 MB RAM, per Render's public pricing page), a handful of concurrent multi-
-  megabyte clinic-document uploads is a real ceiling worth sizing against, not a theoretical one;
-  Render's exact request-timeout figure per plan was not confirmed in this pass — **unverified**.
-  This cost is unrelated to which of the three providers is chosen — it is a property of proxying
-  through Next.js at all, not of any vendor.
+  full byte size in the server process's memory for the duration of the request — on our actual
+  Render **Free** plan (512 MB RAM, 0.1 CPU), buffering a multi-megabyte clinic-document PDF per
+  concurrent upload in a constrained Node process is, per Decision item 1, a structural mistake, not
+  a tuning problem; Render's exact request-timeout figure per plan was not confirmed in this pass —
+  **unverified**. This cost is unrelated to which of the three providers is chosen — it is a property
+  of proxying through Next.js at all, not of any vendor.
 - _Which providers remain viable:_ all three, including Hetzner without a proxy workaround of its
   own (the Next.js server _is_ the proxy, incidentally solving Hetzner's CORS gap as a side effect).
 
 **Net effect on provider selection:** Option A rules out Hetzner without added engineering (a CORS
-proxy). Option B removes CORS as a factor entirely for all three, at the cost of routing file bytes
-through the Render web service's own memory and request-handling budget. Neither option is selected
-here — this ADR states the implication of each rather than choosing, per the owner's instruction.
+proxy) and, per Decision item 1, removes the Free-plan memory concern entirely rather than sizing
+around it. Option B removes CORS as a factor entirely for all three, at the cost of routing file
+bytes through the Render web service's own memory and request-handling budget. **Option A is
+selected (Decision item 1).**
 
 ### Bucket boundary
+
+**SELECTED: one bucket with `clinic_id`-prefixed keys, per Decision item 4** — the owner accepted
+this ADR's own conclusion, stated below, as-is.
 
 One bucket for all clinics with `storage_key = clinic_id/document_id`-style key prefixing, versus
 one bucket per clinic.
@@ -221,10 +277,12 @@ scoped against, that cost is invisible; it becomes a real provisioning-automatio
 clinic onboarding needs to create infrastructure per signup rather than just database rows. A single
 bucket with `clinic_id`-prefixed keys is the reading consistent with how every other tenant-scoped
 resource in this platform works (ADR-0003, ADR-0006, ADR-0008 all isolate by a `clinic_id` column
-under one shared schema, not by one physical resource per tenant) — but this ADR does not select it;
-it states the trade-off for the owner as asked.
+under one shared schema, not by one physical resource per tenant), and is the reading the owner
+selected under Decision item 4.
 
 ### MinIO stand-in — recommendation
+
+**APPROVED for development only, per Decision item 7.**
 
 The owner's own instinct, stated in the PR comment, is that a local S3-API stand-in (MinIO or
 equivalent) is safe "precisely because it does not invent a model — it implements the documented one
@@ -241,24 +299,3 @@ local stand-in (e.g. MinIO, per the documented Render deployment target found in
 while this ADR remains open, on the condition that it is never mistaken for a production-adjacent
 environment — it carries no EU-residency guarantee of its own and is not a substitute for resolving
 this ADR before any real clinic's documents are stored anywhere.
-
-## Consequences
-
-Deferred to the owner ruling. Recording here only what is already fixed regardless of which
-candidate is chosen: retrieval and download must continue to go through the RLS-scoped row lookup
-`06-knowledge-document-storage.md` already specifies (no candidate above changes that), and no
-credential or configuration decision made under item 7 above may introduce a path to an object or
-bucket that bypasses that lookup. Whichever upload path is chosen (see "Upload path" above) is
-itself a consequence worth restating here: Option A trades CORS configuration work (and, for
-Hetzner, a proxy component) for keeping file bytes off the Render web service entirely; Option B
-trades that CORS work away in exchange for the Render service's own memory and request-handling
-budget becoming a scaling factor for uploads.
-
-## Alternatives considered
-
-The candidate comparison tables above **are** the alternatives-considered analysis for this ADR —
-six candidates originally researched, three (AWS S3, Cloudflare R2, Backblaze B2) set aside on the
-owner's jurisdiction ruling without failing a technical constraint, three (Scaleway, OVHcloud,
-Hetzner) compared in depth against the remaining open questions — with no single provider selected.
-This section is included for template consistency only; see "Considered and set aside" and
-"Candidate comparison — Scaleway, OVHcloud, Hetzner" above rather than duplicating them here.

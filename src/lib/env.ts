@@ -122,3 +122,31 @@ export function getSeedStaffPassword(): string {
 export function isSeedForceEnabled(): boolean {
   return process.env.SEED_FORCE === 'true';
 }
+
+/**
+ * Scaleway Object Storage credentials for the knowledge-document upload flow
+ * (roadmap P5 Slice 1B, ADR-0018). Read lazily, same pattern as
+ * `getDatabaseUrl`/`getAppDatabaseUrl` above — only
+ * `src/features/knowledge-base/storage.ts` calls these. Never logged, never
+ * printed, never embedded in an error message: a caller that needs to
+ * report a storage failure reports the failure kind, not these values.
+ */
+export function getScalewayS3Endpoint(): string {
+  return requireEnv('SCALEWAY_S3_ENDPOINT');
+}
+
+export function getScalewayS3Region(): string {
+  return requireEnv('SCALEWAY_S3_REGION');
+}
+
+export function getScalewayS3Bucket(): string {
+  return requireEnv('SCALEWAY_S3_BUCKET');
+}
+
+export function getScalewayAccessKeyId(): string {
+  return requireEnv('SCALEWAY_ACCESS_KEY_ID');
+}
+
+export function getScalewaySecretAccessKey(): string {
+  return requireEnv('SCALEWAY_SECRET_ACCESS_KEY');
+}

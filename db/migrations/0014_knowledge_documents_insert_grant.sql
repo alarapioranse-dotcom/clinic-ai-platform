@@ -1,0 +1,45 @@
+-- Roadmap P5 Slice 1B ("upload initiation and completion"): the create path
+-- Slice 1A explicitly deferred (db/migrations/0013_knowledge_documents.sql:
+-- "storage_key is NOT NULL and is only ever produced by the Slice 1B upload
+-- flow"). ADR-0018 (Accepted): the browser uploads directly to Scaleway
+-- Object Storage via a server-generated presigned PUT — the application
+-- never receives the file's bytes. This migration grants only what that
+-- flow's completion step needs: one INSERT, issued only after the server
+-- has independently verified the uploaded object via HeadObject (actual
+-- ContentLength and Content-Type), never a client-declared value.
+--
+-- INSERT-only, deliberately:
+--   - No UPDATE: no status-transition or edit-in-place path exists in this
+--     slice. Extraction, chunking, and embeddings (which would move status
+--     processing -> ready/failed) are out of scope for P5 Slice 1B, which is
+--     upload only.
+--   - No DELETE: object deletion is deferred to a separate future slice, per
+--     the human-approved 1B scope. Granting DELETE now, with no
+--     corresponding object-deletion code, would let a row be deleted while
+--     its object silently survives — worse than the orphan-object case this
+--     slice explicitly accepts as a known limitation (an object with no row,
+--     never a row with a dangling object).
+--   - SELECT is unchanged from 0013.
+--
+-- No policy change: `tenant_isolation`'s existing WITH CHECK
+-- (`clinic_id = current_setting('app.current_clinic_id', true)::uuid`,
+-- 0013) already covers INSERT — WITH CHECK applies to every row a command
+-- adds or modifies, and INSERT is exactly that case. Verified directly
+-- against a real Postgres instance while writing this migration (see
+-- tests/db/knowledge-documents-isolation.test.ts's "cross-clinic INSERT is
+-- rejected by WITH CHECK" case): a cross-clinic INSERT attempt is rejected
+-- with "new row violates row-level security policy for table
+-- \"knowledge_documents\"" without any change to the policy itself.
+--
+-- No sequence or DEFAULT privilege is needed for this grant. `id` defaults
+-- to gen_random_uuid() (0013), but the application-level insert path
+-- (src/features/knowledge-base/repository.ts's insertKnowledgeDocument)
+-- always supplies an explicit `id` value — the same document id already
+-- returned to the browser at upload-initiation time and used to construct
+-- storage_key — so that DEFAULT expression is never evaluated by this
+-- slice's own code path. It is not a sequence in any case (gen_random_uuid()
+-- is a function call, not nextval() against a sequence object), and
+-- function EXECUTE privilege is granted to PUBLIC by default and is not
+-- revoked anywhere in this schema, so no separate grant would be needed even
+-- if a future caller did rely on the DEFAULT.
+GRANT INSERT ON knowledge_documents TO app_user;

@@ -139,3 +139,12 @@ first, plus the database's Internal Database URL from the Render dashboard.
 Investigated 2026-09-05: sign-in page is P2, patients list is the contested
 piece. Design tokens already exist in src/app/globals.css; layout is
 deliberately unspecified per docs/product/00-overview.md.
+
+Update 2026-09-20: the two paragraphs above are superseded. Migration 0009
+was applied long ago — production is now at migration 0014 (P3 through P5
+Slice 1B are merged; see CLAUDE.md's Status section for current state). The
+web service was created and runs on Render's **Free** plan (512 MB RAM, 0.1
+CPU), not a paid Starter-tier plan; `clinic-ai-db` was separately upgraded
+from Render's free compute tier to the smallest paid plan ($6/month) per
+docs/operations/2026-09-12-database-plan-decision.md — that upgrade was
+about the database expiring, not the web service.

@@ -29,8 +29,11 @@ data — not a generic assistant's guess.
 - A clinic's own data is the only source of truth for an answer. If the data isn't there, the
   answer isn't given.
 - Handing a conversation to a human is a successful outcome, not a fallback to be minimized.
-- The product is Arabic-first and RTL-first by design, not an English product translated
-  afterward.
+- The product is multilingual and bidirectional by design; EU/EEA is the initial geographic and
+  regulatory scope, not a language restriction, per ADR-0020.
+- The product aims for premium, highly intuitive, visually distinctive healthcare UX, with
+  accessibility, responsiveness, clarity, trust, and ease of use treated as foundational product
+  qualities, per ADR-0020.
 - The out-of-scope list in [`docs/01-project-plan.md`](../01-project-plan.md) is a contract with
   the reader, not a preference that yields to a good idea.
 

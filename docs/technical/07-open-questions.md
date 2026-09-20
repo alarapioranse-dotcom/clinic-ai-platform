@@ -78,24 +78,25 @@ direct lever on that risk.
 
 Resolved by ADR-0008.
 
-**What's being decided:** where the retrieval-time chunk/embedding representation described in
+**What was being decided:** where the retrieval-time chunk/embedding representation described in
 [`06-knowledge-document-storage.md`](./06-knowledge-document-storage.md) physically lives.
 
-**Why it's one-way-door:** the two candidates carry meaningfully different isolation guarantees
-(see below) and different data-residency footprints — a dedicated vector store is very likely a
-separate vendor/service with its own hosting region, which the EU-residency assumption in
-[`00-overview.md`](./00-overview.md) would then apply to as well, doubling the surface issue #7
-eventually needs to resolve. Migrating a production knowledge base's embeddings from one storage
-architecture to the other later means re-embedding and re-validating retrieval quality for every
-live clinic simultaneously, not a schema migration.
+**Why it was one-way-door:** the candidates carried meaningfully different isolation guarantees and
+different data-residency footprints — a dedicated vector store would likely have been a separate
+vendor/service with its own hosting region, which the EU-residency assumption in
+[`00-overview.md`](./00-overview.md) would then have applied to as well. Migrating a production
+knowledge base's embeddings from one storage architecture to another later means re-embedding and
+re-validating retrieval quality for every live clinic simultaneously, not a schema migration.
 
-**Candidates:**
-
-| Option                                             | Isolation guarantee                                                                                                                                                                                                                                                        | Tradeoffs                                                                                                                                                                                                                                                                                                                       |
-| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Co-located (pgvector in the existing Postgres)** | Identical to every other table in [`01-database-schema.md`](./01-database-schema.md) — RLS, `clinic_id`, same guarantees, same test in [`02-tenant-isolation-testing.md`](./02-tenant-isolation-testing.md) covers it "for free" if included in that suite's table list.   | Simplest operationally (one database to run and back up); vector search inside Postgres is adequate at this product's expected per-clinic knowledge-base size, but may need revisiting if a clinic's knowledge base grows far beyond "services, pricing, hours, policies" ([`docs/01-project-plan.md`](../01-project-plan.md)). |
-| **Dedicated vector database**                      | Depends entirely on that service's own `clinic_id`-filtering being applied correctly on every query — a second, independent place the "always remember the tenant filter" discipline ADR-0003 was written to remove from application code would need to be re-established. | Purpose-built retrieval performance and scaling headroom; adds a second vendor relationship, a second data-residency question, and a second system that must be kept in sync with `knowledge_documents` row deletions.                                                                                                          |
+**Resolution:** [ADR-0008](../adr/0008-embeddings-storage.md) (Accepted) chose co-located storage —
+a `knowledge_document_chunks` table in the same PostgreSQL database, using the `pgvector` extension
+for similarity search, `clinic_id`-scoped and RLS-protected like every other table in
+[`01-database-schema.md`](./01-database-schema.md). The rejected alternative (a dedicated vector
+database) and the full reasoning are recorded in ADR-0008 itself, not repeated here. See
+[`06-knowledge-document-storage.md`](./06-knowledge-document-storage.md) for how this plays out at
+the retrieval step.
 
 **Interacts with:** the data-residency assumption in
 [`00-overview.md`](./00-overview.md) and, transitively, [issue #7](https://github.com/alarapioranse-dotcom/clinic-ai-platform/issues/7)
-— not decided or reopened here, only noted as downstream of whichever option is chosen.
+— not reopened here. Because the chosen option is co-located, embeddings carry no data-residency
+footprint separate from the primary database's own, per ADR-0008's Consequences.

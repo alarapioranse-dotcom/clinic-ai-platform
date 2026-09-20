@@ -96,41 +96,33 @@ retries after a transient failure and eventually succeeds can't accidentally mov
 already-`failed` row back to `ready`, or vice versa, because by the time a delayed retry's update
 runs, the row may no longer match `processing`.
 
-## Retrieval-time storage — a requirement, not a decided architecture
+## Retrieval-time storage — resolved by ADR-0008
 
 What Stage 3 (RETRIEVE) in [`05-ai-pipeline.md`](./05-ai-pipeline.md) needs is: **given a Clinic
 and a query, return the most relevant chunks of that Clinic's `Ready` KnowledgeDocuments, scoped by
 `clinic_id` like every other read in this system.** That requirement is fixed here. _Where_ the
-chunk/embedding representation physically lives is not — it is Open Question 3 in
-[`07-open-questions.md`](./07-open-questions.md), between two candidate architectures:
+chunk/embedding representation physically lives was Open Question 3 in
+[`07-open-questions.md`](./07-open-questions.md); it is now resolved by
+[ADR-0008](../adr/0008-embeddings-storage.md) (Accepted): **co-located** — a `knowledge_document_chunks`
+table in the same Postgres database, using the `pgvector` extension for similarity search,
+`clinic_id`-scoped and RLS-protected exactly like every table in
+[`01-database-schema.md`](./01-database-schema.md) — retrieval becomes an ordinary tenant-isolated
+query, no second system to keep in sync or separately secure. The rejected alternative (a dedicated
+vector store) and the reasoning are recorded in ADR-0008 itself, not repeated here.
 
-- **Co-located**: a `knowledge_document_chunks` table in the same Postgres database, using the
-  `pgvector` extension for similarity search, `clinic_id`-scoped and RLS-protected exactly like
-  every table in [`01-database-schema.md`](./01-database-schema.md) — retrieval becomes an
-  ordinary tenant-isolated query, no second system to keep in sync or separately secure.
-- **Dedicated vector store**: a separate, retrieval-specialized service, with `clinic_id` carried
-  as metadata on each stored vector and filtered on at query time — isolation there depends on that
-  service's own filtering being applied correctly on every query, which is exactly the
-  "remembering to add `WHERE clinic_id = ...` everywhere, forever" failure mode ADR-0003 was
-  written to avoid for the primary database; extending that same trust model to a second store is
-  not automatic and would need its own equivalent of Row Level Security-strength guarantees to
-  match this platform's isolation bar.
-
-Neither is chosen here. Whichever the underlying storage, this represents the retrieval-time
-content of a `Ready` KnowledgeDocument (chunk text plus its embedding vector), keyed back to
-`knowledge_documents.id` — it is **not** a new domain entity: it has no independent lifecycle,
-identity, or meaning outside the KnowledgeDocument it was derived from (deleting the
-KnowledgeDocument deletes its chunks; a chunk is never referenced from anywhere except the
-retrieval step). This is the same "infrastructure supporting an existing aggregate" framing
-[`00-overview.md`](./00-overview.md) applies to `staff_sessions` in
+This represents the retrieval-time content of a `Ready` KnowledgeDocument (chunk text plus its
+embedding vector), keyed back to `knowledge_documents.id` — it is **not** a new domain entity: it
+has no independent lifecycle, identity, or meaning outside the KnowledgeDocument it was derived
+from (deleting the KnowledgeDocument deletes its chunks; a chunk is never referenced from anywhere
+except the retrieval step). This is the same "infrastructure supporting an existing aggregate"
+framing [`00-overview.md`](./00-overview.md) applies to `staff_sessions` in
 [`04-auth-implementation.md`](./04-auth-implementation.md).
 
-## What must hold regardless of which candidate is chosen
+## What must hold, per ADR-0008
 
 - Retrieval never returns chunks from a KnowledgeDocument whose status is not `ready` — deleting or
   re-uploading a document must make its old chunks unreachable at least as promptly as the row's
   own status changes, so a `Failed` or since-deleted document can never leak into a grounded reply.
 - Retrieval is always scoped to one `clinic_id`, with the same "no cross-tenant leak, checked
-  structurally, not by remembering a `WHERE` clause" bar as the rest of this platform — this is the
-  one requirement neither candidate architecture above is allowed to relax, whichever Ahmed
-  chooses.
+  structurally, not by remembering a `WHERE` clause" bar as the rest of this platform — enforced by
+  the RLS policy ADR-0008 gives `knowledge_document_chunks`, not application-side filtering.

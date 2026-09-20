@@ -233,17 +233,21 @@ question unaddressed silently.
    conversation ending in a booking" (`docs/product/03-user-flows.md`); every
    `/dashboard/appointments*` screen.
 3. **Aggregate owner** — Aggregate Root of its own aggregate.
-4. **Tenant ownership** — belongs to exactly one Clinic; references a Patient, a Service, and a
-   StaffMember (as practitioner) that must all belong to that same Clinic (see
-   [`04-relationships.md`](./04-relationships.md)).
+4. **Tenant ownership** — belongs to exactly one Clinic; references a Patient and a StaffMember (as
+   practitioner) that must both belong to that same Clinic (see
+   [`04-relationships.md`](./04-relationships.md)). Whether an Appointment also references a
+   Service is not settled: [ADR-0014](../adr/0014-appointment-no-double-booking-invariant.md)
+   (Accepted) explicitly leaves "whether a `services` reference belongs in P4 at all" unresolved,
+   and the `appointments` table in `db/migrations/0011_appointments.sql` has no `service_id`
+   column.
 5. **Lifecycle** — Booked → Rescheduled (returns to Booked with a new TimeSlot) → Cancelled, or
    Booked → Completed. (Completed is implied by the practitioner's schedule-checking journey but
    not an explicit flow step — flagged as an assumption.)
 6. **Actor responsible for every lifecycle transition** — Receptionist, Admin, or Owner create and
    modify it directly from the dashboard; Assistant creates it on a Patient's behalf during a
    booking conversation; Practitioner never transitions it (view-only, ADR-0004).
-7. **Validation rules** — references exactly one Patient, one Service, one Practitioner
-   (StaffMember with role practitioner), and one TimeSlot.
+7. **Validation rules** — references exactly one Patient, one Practitioner (StaffMember with role
+   practitioner), and one TimeSlot. Whether a Service is also required is unresolved — see point 4.
 8. **Business rules** — a hard domain invariant, approved by Ahmed: no two non-Cancelled
    Appointments for the same Practitioner — the only schedulable resource this model recognizes —
    within the same Clinic may have overlapping TimeSlots. A conflicting Appointment is rejected
@@ -251,10 +255,10 @@ question unaddressed silently.
    override (see [`02-aggregates.md`](./02-aggregates.md) for the aggregate-boundary discussion of
    this invariant). A Cancelled or past Appointment cannot be rescheduled
    (`06-acceptance-criteria.md`).
-9. **Data classification** — Personal Data (links an identifiable Patient to a time, a service,
-   and a practitioner); the Service referenced may elevate this to GDPR Article 9 Special Category
-   Data when the service name itself is health-revealing (see Service, above, and this
-   deliverable's PR description).
+9. **Data classification** — Personal Data (links an identifiable Patient to a time and a
+   practitioner); if a Service reference is added (point 4 — not settled), it may elevate this to
+   GDPR Article 9 Special Category Data when the service name itself is health-revealing (see
+   Service, above, and this deliverable's PR description).
 10. **Erasure behaviour (ADR-0005)** — retained in de-identified form only where the Clinic has an
     independent legal and operational basis under Article 17(3); absent that basis, an Appointment
     referencing an erased Patient is deleted, not merely de-identified.

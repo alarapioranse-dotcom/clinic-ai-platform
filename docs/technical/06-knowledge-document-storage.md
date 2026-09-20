@@ -14,11 +14,11 @@ one object per `knowledge_documents.storage_key`, **not** as a database column �
 binary blob in Postgres would bloat every backup and every RLS-scoped query's working set for no
 benefit, and object storage is the ordinary tool for this job.
 
-- **Bucket/region is left unspecified here**, per the data-residency assumption in
-  [`00-overview.md`](./00-overview.md) — whichever region is chosen must satisfy "data resides in
-  the EU" (charter §7) as currently assumed, and that assumption itself is what
-  [issue #7](https://github.com/alarapioranse-dotcom/clinic-ai-platform/issues/7) may revisit. This
-  document does not commit to a vendor or region for that reason.
+- **Vendor and region**: this document originally left them unspecified, deferring to
+  [issue #7](https://github.com/alarapioranse-dotcom/clinic-ai-platform/issues/7). That question is
+  now resolved by [ADR-0018](../adr/0018-knowledge-document-object-storage.md) (Accepted): Scaleway
+  Object Storage, region `fr-par`, satisfying the EU/EEA residency
+  [ADR-0009](../adr/0009-data-residency.md) requires.
 - Access is via short-lived, server-generated URLs — no bucket or object is ever public. A
   download request goes through `GET /api/knowledge-documents/:id` (or a dedicated download
   endpoint), which re-derives `storage_key` from the RLS-scoped row lookup — a request for another
@@ -29,15 +29,59 @@ benefit, and object storage is the ordinary tool for this job.
   [`03-api-contracts.md`](./03-api-contracts.md)) deletes the corresponding object in the same
   logical operation — a document is never left orphaned in the object store after its row is gone.
 
+## Upload is two validated stages, not one
+
+Roadmap P5 Slice 1B ([ADR-0018](../adr/0018-knowledge-document-object-storage.md), Accepted)
+implements the upload path this section's "Raw file storage" already fixed the shape of: the
+browser uploads directly to Scaleway, and the application validates that upload in two stages that
+are not interchangeable and must not be conflated.
+
+- **Initiation** (`POST /api/knowledge-documents`, [`03-api-contracts.md`](./03-api-contracts.md)):
+  the client declares `filename`, `mimeType`, and `sizeBytes` before it has uploaded anything. The
+  server checks the declared `mimeType` is exactly `application/pdf` — the only accepted declared
+  MIME type for this slice — and the declared `sizeBytes` does not exceed **10485760 bytes (10
+  MiB, exactly `10 * 1024 * 1024`)**. **These checks are a client-declared UX guard, not
+  authoritative enforcement.** Nothing prevents a client from declaring `application/pdf` and a
+  small `sizeBytes`, then uploading a different file entirely — the presigned PUT this stage
+  returns authorizes writing bytes to `clinicId/documentId`, not any particular bytes. No database
+  row exists after this stage; it exists only to catch an obviously-wrong file before the browser
+  spends time uploading it.
+- **Completion** (`POST /api/knowledge-documents/:id/complete`): once the browser's PUT to Scaleway
+  finishes, the server calls **HeadObject** against `clinicId/documentId` — re-derived from the
+  authenticated session and the document id, never accepted as a `storage_key` from the client.
+  **The actual object `ContentLength` returned by HeadObject is the authoritative size check**
+  (must be `<= 10485760`), and **the actual stored `Content-Type` is the authoritative type check**
+  (must be exactly `application/pdf`). Only once both pass does the server insert the
+  `knowledge_documents` row. **A stored `Content-Type` of `application/pdf` proves only that
+  Scaleway recorded that metadata for the object — it does not prove the bytes are actually a
+  PDF.** Verifying that would require reading the file's magic bytes, which this slice does not do;
+  magic-byte/PDF-signature validation is a future follow-up, not implemented here.
+- **Failed completion inserts no row.** If HeadObject finds nothing, or the actual size or
+  Content-Type fails its check, no `knowledge_documents` row is ever created for that upload
+  attempt.
+- **Orphan objects are an accepted limitation of this slice.** If the browser's PUT to Scaleway
+  succeeds but the client never calls the completion endpoint (a closed tab, a crashed browser, a
+  network failure after the PUT but before completion), the object remains in the private bucket
+  with no corresponding database row, indefinitely. This slice does not reconcile that: there is no
+  background job, no listing of the bucket, no comparison against `knowledge_documents` rows.
+  Orphan-object reconciliation is a future follow-up.
+
 ## Processing lifecycle (Processing → Ready / Failed)
 
 ```text
-POST /api/knowledge-documents (multipart upload)
-  1. Validate file type/size (B: pre-upload validation branches). Reject with 400 before
-     anything is persisted if invalid.
-  2. Upload the raw file to object storage under a new storage_key.
+POST /api/knowledge-documents (initiation) -> 201 { documentId, uploadUrl, expiresAt }
+  1. Validate the declared filename/mimeType/sizeBytes per the non-authoritative UX guard above.
+     Reject with 400 before anything is persisted if invalid. No row created on success either.
+
+Browser PUTs the file directly to Scaleway using uploadUrl (ADR-0018) — the application's own
+process never sees these bytes.
+
+POST /api/knowledge-documents/:id/complete
+  2. HeadObject against the re-derived storage_key. 404 if missing; 422 if the actual
+     ContentLength/Content-Type fails the authoritative check above (see "Upload is two
+     validated stages, not one"). No row created on failure.
   3. INSERT knowledge_documents (status = 'processing').  ─────► 201 returned to the caller
-     immediately; steps 4-6 run asynchronously.
+     immediately; steps 4-6 below are a later slice's work, not yet implemented.
   4. Extract text content from the file.
   5. Split into retrieval-sized chunks and generate embeddings for each (see below).
   6. On success: UPDATE knowledge_documents SET status = 'ready', ready_at = now()

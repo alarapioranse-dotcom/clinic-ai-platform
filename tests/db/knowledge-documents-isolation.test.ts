@@ -1,21 +1,43 @@
-import { describe, it, expect, afterAll } from 'vitest';
+import { describe, it, expect, afterAll, vi } from 'vitest';
+import { randomUUID } from 'node:crypto';
 import { Client, type PoolClient, type QueryResult } from 'pg';
 import { withTenantContext, withoutTenantContext, closePool } from '@/lib/db';
 import { getDatabaseUrl } from '@/lib/env';
-import { getKnowledgeDocumentsForClinic, getKnowledgeDocument } from '@/features/knowledge-base';
+import {
+  getKnowledgeDocumentsForClinic,
+  getKnowledgeDocument,
+  completeKnowledgeDocumentUpload,
+} from '@/features/knowledge-base';
 import { createTestClinic, createTestStaffMember, createTestKnowledgeDocument } from '../fixtures';
 
 /**
+ * Storage is mocked for the whole file: every test here exercises the
+ * database layer (RLS, grants, constraints), never real Scaleway I/O. Only
+ * the "authorized tenant-scoped INSERT is permitted through the intended
+ * domain path" test below actually calls into this mock (via
+ * `completeKnowledgeDocumentUpload`) — every other test in this file never
+ * reaches `storage.ts` at all.
+ */
+const { headObjectMock } = vi.hoisted(() => ({ headObjectMock: vi.fn() }));
+vi.mock('@/features/knowledge-base/storage', () => ({
+  headObject: headObjectMock,
+  createPresignedUploadUrl: vi.fn(),
+}));
+
+/**
  * Database-layer coverage for `db/migrations/0013_knowledge_documents.sql`
- * (roadmap P5 Slice 1A, "document persistence foundation"): RLS tenant
- * isolation, the documented CHECK constraints, the foreign keys (including
- * the `knowledge_documents_uploaded_by_same_clinic` composite FK added on
- * owner review), and `app_user`'s least-privilege grants (SELECT only — no
- * INSERT/UPDATE/DELETE exist in this slice). No test here goes through a
- * repository "create"
- * function because none exists: fixture rows are inserted directly via
- * `createTestKnowledgeDocument` (../fixtures.ts), the same convention
- * `tests/db/appointments-invariants.test.ts` uses for schema-level behavior.
+ * and `db/migrations/0014_knowledge_documents_insert_grant.sql` (roadmap P5
+ * Slices 1A and 1B): RLS tenant isolation, the documented CHECK constraints,
+ * the foreign keys (including the `knowledge_documents_uploaded_by_same_clinic`
+ * composite FK added on owner review), and `app_user`'s grants — SELECT and,
+ * as of 0014, INSERT (never UPDATE/DELETE). Read-path and constraint tests
+ * still insert fixture rows directly via `createTestKnowledgeDocument`
+ * (../fixtures.ts), the same convention `tests/db/appointments-invariants.test.ts`
+ * uses for schema-level behavior; the INSERT-grant tests below instead go
+ * through the real application INSERT path (`completeKnowledgeDocumentUpload`)
+ * or, for the cross-clinic case, a direct app_user-connection SQL statement
+ * (WITH CHECK cannot be forged through `completeKnowledgeDocumentUpload`
+ * itself — see that test's own comment).
  */
 
 async function expectFailClosed(run: (client: PoolClient) => Promise<QueryResult>): Promise<void> {
@@ -162,17 +184,45 @@ describe('knowledge documents: persistence, RLS, and grants', () => {
       await expectFailClosed((client) => client.query('SELECT id FROM knowledge_documents'));
     });
 
-    // No "FORCE RLS WITH CHECK rejects a cross-clinic insert" test here,
-    // unlike tests/db/appointments-invariants.test.ts's equivalent: that
-    // test exercises WITH CHECK through app_user, the one role RLS actually
-    // binds under a non-superuser connection. app_user holds no INSERT
-    // grant on this table at all in this slice (see "app_user grants"
-    // below), so there is no privileged-but-RLS-bound role left to exercise
-    // a cross-clinic INSERT with — the local dev/CI admin connection
-    // (DATABASE_URL) is a Postgres superuser, which bypasses RLS
-    // unconditionally regardless of FORCE ROW LEVEL SECURITY, so it cannot
-    // stand in for one either. This is a consequence of granting no INSERT
-    // in this slice, not a gap in coverage.
+    it('FORCE ROW LEVEL SECURITY remains enabled on knowledge_documents (0014 changed no RLS setting)', async () => {
+      const admin = new Client({ connectionString: getDatabaseUrl() });
+      await admin.connect();
+      try {
+        const { rows } = await admin.query<{ relforcerowsecurity: boolean }>(
+          `SELECT relforcerowsecurity FROM pg_class WHERE relname = 'knowledge_documents'`,
+        );
+        expect(rows[0]?.relforcerowsecurity).toBe(true);
+      } finally {
+        await admin.end();
+      }
+    });
+
+    it("cross-clinic INSERT is rejected by the existing tenant_isolation policy's WITH CHECK (0014 grants INSERT, changes no policy)", async () => {
+      // Cannot be forged through completeKnowledgeDocumentUpload itself:
+      // that function always derives storage_key and the inserted row's
+      // clinic_id from the same clinicId it also sets as the transaction's
+      // own app.current_clinic_id, so a mismatched clinic_id is structurally
+      // unreachable through the intended domain path — which is itself the
+      // property this test's sibling above ("authorized tenant-scoped
+      // INSERT is permitted...") demonstrates. Reaching a genuine
+      // clinic_id-vs-session mismatch requires issuing the INSERT directly,
+      // still through app_user (the tenant-scoped connection
+      // withTenantContext provides), so this exercises the same WITH CHECK
+      // 0013 already established, not a new policy.
+      const clinicA = await createTestClinic('KdocInsertCheckA');
+      const clinicB = await createTestClinic('KdocInsertCheckB');
+      const staffB = await createTestStaffMember(clinicB.id, 'KdocInsertCheckB');
+
+      await expect(
+        withTenantContext(clinicA.id, (client) =>
+          client.query(
+            `INSERT INTO knowledge_documents (id, clinic_id, uploaded_by, filename, mime_type, size_bytes, storage_key)
+             VALUES ($1, $2, $3, 'x.pdf', 'application/pdf', 1, 'x')`,
+            [randomUUID(), clinicB.id, staffB.id],
+          ),
+        ),
+      ).rejects.toThrow(/row-level security policy/i);
+    });
   });
 
   describe('app_user grants (least privilege)', () => {
@@ -188,19 +238,23 @@ describe('knowledge documents: persistence, RLS, and grants', () => {
       ).resolves.toMatchObject({ rows: [{ id: doc.id }] });
     });
 
-    it('app_user has no INSERT grant on knowledge_documents (no create operation exists in this slice)', async () => {
-      const clinic = await createTestClinic('KdocGrantNoInsert');
-      const staff = await createTestStaffMember(clinic.id, 'KdocGrantNoInsert');
+    it('app_user can INSERT knowledge_documents through the intended domain path (completeKnowledgeDocumentUpload, 0014)', async () => {
+      const clinic = await createTestClinic('KdocGrantInsert');
+      const staff = await createTestStaffMember(clinic.id, 'KdocGrantInsert');
+      const documentId = randomUUID();
+      headObjectMock.mockResolvedValueOnce({ contentLength: 2048, contentType: 'application/pdf' });
 
-      await expect(
-        withTenantContext(clinic.id, (client) =>
-          client.query(
-            `INSERT INTO knowledge_documents (clinic_id, uploaded_by, filename, mime_type, size_bytes, storage_key)
-             VALUES ($1, $2, 'x.pdf', 'application/pdf', 1, 'x')`,
-            [clinic.id, staff.id],
-          ),
-        ),
-      ).rejects.toThrow(/permission denied/i);
+      const document = await completeKnowledgeDocumentUpload(
+        clinic.id,
+        staff.id,
+        documentId,
+        'grant-check.pdf',
+      );
+
+      expect(document.id).toBe(documentId);
+      expect(document.status).toBe('processing');
+      const persisted = await getKnowledgeDocument(clinic.id, documentId);
+      expect(persisted).toMatchObject({ id: documentId, filename: 'grant-check.pdf' });
     });
 
     it('app_user has no UPDATE grant on knowledge_documents', async () => {

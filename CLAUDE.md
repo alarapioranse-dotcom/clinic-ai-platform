@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Clinic AI Platform lets Arab-world clinics answer patient messages in seconds using an
+Clinic AI Platform lets EU/EEA clinics (ADR-0020) answer patient messages in seconds using an
 AI assistant grounded in that clinic's own data. It turns those conversations into
 booked appointments instead of a human receptionist doing it manually.
 

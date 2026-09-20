@@ -75,8 +75,8 @@ above" — and that ADR does not yet exist. This question is still open in subst
 undocumented.
 
 **Candidates:** not enumerated here by name — this is deliberately left open rather than presented
-as a shortlist, since the deciding factors (Arabic-language quality specifically, since the product
-is Arabic-first and RTL-first per [charter §3](../governance/project-charter.md); per-conversation
+as a shortlist, since the deciding factors (language quality across whichever languages a clinic
+configures, per [ADR-0020](../adr/0020-multilingual-bidirectional-product-scope.md); per-conversation
 cost against the standing risk "AI cost per conversation exceeding the plan price"
 ([`docs/01-project-plan.md`](../01-project-plan.md)); DPA terms for Article 9-adjacent data) are
 evaluation criteria for Ahmed to weigh, not a technical tradeoff this document resolves the way

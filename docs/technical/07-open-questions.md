@@ -1,10 +1,13 @@
 # Open Questions — One-Way-Door Choices for Ahmed's Decision
 
 Per [charter §10](../governance/project-charter.md) (ADR Policy): "One-way door — Record required
-before the code, plus Ahmed's approval." The three items below are one-way-door choices this
-technical design surfaced while working out _how_ to build Deliverable B's domain model. None of
-them is decided anywhere else in `docs/technical/` — every place in this deliverable that touches
-one of them says so explicitly and points here instead of picking an answer.
+before the code, plus Ahmed's approval." The three items below were one-way-door choices this
+technical design surfaced while working out _how_ to build Deliverable B's domain model, at the
+time this document was first written. Two of the three — RLS tenant-context propagation and
+embeddings storage — have since been resolved by an ADR; each entry below points at the ADR that
+resolved it instead of restating its reasoning. The third, AI provider selection, remains open in
+substance: ADR-0007 fixes the constraints any provider must satisfy but explicitly defers the
+vendor choice itself to a separate ADR that does not yet exist.
 
 Each needs its own ADR, written and Accepted, before the roadmap phase that depends on it: #1
 before P1/P2 (it shapes both the database layer and the auth session model), #2 before P5, #3
@@ -16,10 +19,10 @@ before P5.
 
 Resolved by ADR-0006.
 
-**What's being decided:** how a request's `clinic_id` actually reaches PostgreSQL for the Row
+**What was being decided:** how a request's `clinic_id` actually reaches PostgreSQL for the Row
 Level Security policies in [`01-database-schema.md`](./01-database-schema.md) to key on.
 
-**Why it's one-way-door:** this choice constrains the connection pooling architecture, the ORM/
+**Why it was one-way-door:** this choice constrains the connection pooling architecture, the ORM/
 query-layer choice, and the auth session model in
 [`04-auth-implementation.md`](./04-auth-implementation.md) simultaneously. Once application code is
 written assuming one mechanism, switching to another means touching every query path in the
@@ -27,13 +30,13 @@ codebase, not a config change — and getting it wrong has the specific failure 
 deliverable exists to prevent: a connection reused across requests with a stale `clinic_id` context
 is a cross-tenant data leak, silently, in production.
 
-**Candidates:**
-
-| Option                                                                                   | How it works                                                                                                                                                                                  | Tradeoffs                                                                                                                                                                                                                                                                                                                                 |
-| ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Per-request session variable** (illustrative default used throughout this deliverable) | `SET LOCAL app.current_clinic_id = $1` at the start of each request's transaction; RLS policies read it via `current_setting(...)`.                                                           | Simple, requires no schema for identity beyond `staff_sessions`. Fails unsafely (leaks data) if a pooler in _transaction_ mode reuses a connection between two requests without resetting the setting — requires either session-mode pooling or explicit reset-on-release, which has real throughput cost.                                |
-| **Postgres role per clinic**                                                             | Each clinic gets its own database role; RLS policies (or `GRANT`s) key on `current_user`.                                                                                                     | Isolation guarantee moves from "an app-level SET was correct" to "the connection itself cannot see other clinics," which is stronger. Doesn't scale cleanly to hundreds/thousands of clinics (role management, connection-pool sizing per role) — real cost at this product's target scale (small/mid clinics, potentially many of them). |
-| **JWT-claim-checked policy function**                                                    | RLS policy calls a function that verifies a signed JWT (passed via a setting or extension) and extracts `clinic_id` from a verified claim, rather than trusting an unsigned session variable. | Removes "did the app remember to SET the right value" as a trust boundary entirely — the policy verifies cryptographically. Adds a JWT verification dependency inside the database layer and a key-rotation story that doesn't exist with the simpler options.                                                                            |
+**Resolution:** [ADR-0006](../adr/0006-rls-tenant-context-propagation.md) (Accepted) chose the
+per-request session variable — `SET LOCAL app.current_clinic_id = <clinic_id>` inside the same
+transaction as the request's queries, with every RLS policy reading it via `current_setting(...)`
+— over a Postgres role per clinic or a JWT-claim-checked policy function. The rejected alternatives
+and the mandatory conditions attached to this choice (session-mode pooling or reset-on-release, a
+CI gate on pooler configuration, an added tenant-isolation test case) are recorded in ADR-0006
+itself, not repeated here.
 
 **Interacts with:** the auth session model in
 [`04-auth-implementation.md`](./04-auth-implementation.md) (a Postgres-role-per-clinic option would
@@ -46,7 +49,8 @@ supports role granularity below the clinic level.
 
 ## 2. AI provider
 
-Resolved by ADR-0007.
+Constraints fixed by ADR-0007 (Accepted); vendor selection itself remains open — no
+vendor-selection ADR exists yet.
 
 **What's being decided:** which LLM vendor(s) implement the `AssistantProvider` interface in
 [`05-ai-pipeline.md`](./05-ai-pipeline.md).
@@ -60,13 +64,23 @@ pipeline's _interface_ (P5, already fixed in `05-ai-pipeline.md`) makes swapping
 _implementation_ technically straightforward. The one-way cost here is legal/operational, not code
 structure.
 
+**What ADR-0007 fixed, and what it left open:** [ADR-0007](../adr/0007-ai-provider-constraints.md)
+(Accepted) fixes four constraints any provider adopted in P2 must satisfy — an EU-region inference
+endpoint, a signed Data Processing Agreement covering Article 9 data, a contractual
+no-training-on-customer-data term, and no patient identifiers in prompts — but does not choose a
+vendor. In ADR-0007's own words: "This ADR itself does not select a vendor" and "No vendor is
+named at this phase." Per that ADR, "Vendor selection itself is a separate ADR, written before P2,
+that cites this ADR and states how the selected vendor satisfies each of the four constraints
+above" — and that ADR does not yet exist. This question is still open in substance, not merely
+undocumented.
+
 **Candidates:** not enumerated here by name — this is deliberately left open rather than presented
 as a shortlist, since the deciding factors (Arabic-language quality specifically, since the product
 is Arabic-first and RTL-first per [charter §3](../governance/project-charter.md); per-conversation
 cost against the standing risk "AI cost per conversation exceeding the plan price"
 ([`docs/01-project-plan.md`](../01-project-plan.md)); DPA terms for Article 9-adjacent data) are
-evaluation criteria for Ahmed to weigh, not a technical tradeoff this document can resolve the way
-the other two questions' candidate tables do.
+evaluation criteria for Ahmed to weigh, not a technical tradeoff this document resolves the way
+Questions 1 and 3 were.
 
 **Interacts with:** the standing risk "AI cost per conversation exceeding the plan price"
 ([`docs/01-project-plan.md`](../01-project-plan.md), Standing risks) — the vendor choice is the

@@ -36,17 +36,18 @@ P1, P2, P3 (A, B, C) and P4 are closed. See `CLAUDE.md` Status for the authorita
 
 - Slice 1A (schema) and Slice 1B (upload initiate and complete) are merged. P5 overall is not closed.
 - Upload accepts PDF only, at most 10485760 bytes. Completion checks real ContentLength and Content-Type through HeadObject.
-- Not built: PDF signature validation, extraction, chunking, embeddings, retrieval, any AI call.
+- Completion also validates the PDF signature through a bounded prefix read (ADR-0021, PR #79).
+- Not built: extraction, chunking, embeddings, retrieval, any AI call.
 
 ## 8. Current blockers
 
 - AI provider selection is blocked on contractual verification.
-- PDF signature validation waits for the Owner to review and accept ADR-0021 (Proposed). It clarifies ADR-0018 Decision 1 for a bounded 1024-byte prefix read.
 
 ## 9. Current open issues
 
-- PDF magic-byte validation (GitHub issue).
-- Orphan-object reconciliation (GitHub issue).
+- PDF magic-byte validation (GitHub issue): addressed by PR #79. Issue state not re-verified.
+- PR #79 production checks deferred to the first legitimate upload: storage key read permission, Scaleway `Range` and `If-Match` on GET, HeadObject ETag.
+- Orphan-object reconciliation (GitHub issue): open, deferred.
 - Full-database backup that works with FORCE RLS is unsolved. Never weaken RLS to fix it.
 - ADR-0013 is still Proposed.
 - Scaleway access key expires 2027-09-20. Object Storage free trial ends 2026-12-19.
@@ -55,11 +56,11 @@ P1, P2, P3 (A, B, C) and P4 are closed. See `CLAUDE.md` Status for the authorita
 
 ## 10. Current ADR state
 
-- Accepted: 0001 to 0009, 0011, 0012, 0014 to 0018, 0020.
-- Proposed: 0013, 0021.
+- Accepted: 0001 to 0009, 0011, 0012, 0014 to 0018, 0020, 0021.
+- Proposed: 0013.
 - 0010 is reserved and unwritten.
 - 0019 (AI provider selection) is Proposed. Its draft is in PR #75 and is not on `main`.
-- 0021 (bounded prefix read for file-type validation) is Proposed. It clarifies ADR-0018 Decision 1 without editing it.
+- 0021 (bounded prefix read for file-type validation) is Accepted (PR #78). It clarifies ADR-0018 Decision 1 without editing it.
 - Accepted ADRs are never edited. A change is a new ADR (charter section 10).
 
 ## 11. AI provider status
@@ -87,19 +88,18 @@ Under contractual verification, not selected. Per the Owner's correspondence (no
 
 ## 14. Current next action
 
-1. The Owner reviews and accepts ADR-0021.
-2. The agent then presents an implementation plan for PDF signature validation at completion only (strict policy: `%PDF-1.0` to `%PDF-1.7` or `%PDF-2.0` at offset 0; `IfMatch` with the HeadObject ETag).
-3. Nothing is implemented until the Owner authorizes the code change.
+1. No implementation is currently authorized. The Owner decides the next step.
+2. Nothing is implemented until the Owner authorizes it.
 
 ## 15. Last verified state and date
 
-Verified by repository inspection on 2026-10-04. `main` was at `cb8c6b8` (2026-09-20). Test counts were not re-run; the last reported count was 319 at Slice 1B.
+Verified by repository inspection on 2026-10-06. `main` was at `66af578` (PR #79). Test counts were not re-run; PR #79 reported 444/444 (319 at Slice 1B).
 
 ## CLAUDE CODE / EXECUTION READINESS
 
-- Current need: OPTIONAL for documentation. STRONGLY RECOMMENDED for the PDF signature implementation.
-- Reason: documentation and single-file changes are practical through the GitHub web editor. The PDF change touches several source files plus new and changed tests, and test results arrive only after pushing, through CI.
-- Next point where a coding agent would materially save time: the PDF signature validation change (several source files plus new and changed test files), and any later slice with migrations or many files.
+- Current need: OPTIONAL for documentation.
+- Reason: documentation and single-file changes are practical through the GitHub web editor. Multi-file code changes need test iteration, and test results arrive only after pushing, through CI.
+- Next point where a coding agent would materially save time: any later slice with migrations or many files.
 - Manual GitHub or browser execution: practical for documentation only. Not practical for multi-file code with test iteration.
 - Should the next major phase wait for Claude Code: yes for P5 retrieval and AI work, which is also blocked by ADR-0019.
 - A chat assistant cannot send reminders or alerts on its own. When a task needs a coding agent, it must say so at the start of its reply.

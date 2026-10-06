@@ -15,12 +15,17 @@ import { createTestClinic, createTestStaffMember, createTestKnowledgeDocument } 
  * database layer (RLS, grants, constraints), never real Scaleway I/O. Only
  * the "authorized tenant-scoped INSERT is permitted through the intended
  * domain path" test below actually calls into this mock (via
- * `completeKnowledgeDocumentUpload`) — every other test in this file never
- * reaches `storage.ts` at all.
+ * `completeKnowledgeDocumentUpload`, which now also reads a bounded PDF
+ * prefix via `readObjectPrefix` — ADR-0021) — every other test in this file
+ * never reaches `storage.ts` at all.
  */
-const { headObjectMock } = vi.hoisted(() => ({ headObjectMock: vi.fn() }));
+const { headObjectMock, readObjectPrefixMock } = vi.hoisted(() => ({
+  headObjectMock: vi.fn(),
+  readObjectPrefixMock: vi.fn(),
+}));
 vi.mock('@/features/knowledge-base/storage', () => ({
   headObject: headObjectMock,
+  readObjectPrefix: readObjectPrefixMock,
   createPresignedUploadUrl: vi.fn(),
 }));
 
@@ -242,7 +247,15 @@ describe('knowledge documents: persistence, RLS, and grants', () => {
       const clinic = await createTestClinic('KdocGrantInsert');
       const staff = await createTestStaffMember(clinic.id, 'KdocGrantInsert');
       const documentId = randomUUID();
-      headObjectMock.mockResolvedValueOnce({ contentLength: 2048, contentType: 'application/pdf' });
+      headObjectMock.mockResolvedValueOnce({
+        contentLength: 2048,
+        contentType: 'application/pdf',
+        etag: '"9b2cf535f27731c974343645a3985328"',
+      });
+      readObjectPrefixMock.mockResolvedValueOnce({
+        outcome: 'ok',
+        bytes: Uint8Array.from(Buffer.from('%PDF-1.7\n', 'latin1')),
+      });
 
       const document = await completeKnowledgeDocumentUpload(
         clinic.id,

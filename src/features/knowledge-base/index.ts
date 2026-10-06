@@ -8,8 +8,10 @@
  * Roadmap P5 Slice 1B (ADR-0018, human-approved decisions) adds the upload
  * flow: `createKnowledgeDocumentUploadIntent` (initiation) and
  * `completeKnowledgeDocumentUpload` (completion) — direct browser-to-Scaleway
- * upload via a presigned PUT, file bytes never passing through this process.
- * No extraction, chunking, embedding, pgvector, or AI code exists in this
+ * upload via a presigned PUT, file bytes never passing through this process
+ * — with the single, bounded exception ADR-0021 records: at completion the
+ * server reads at most the first 1024 bytes of the stored object, solely to
+ * verify the PDF signature. No extraction, chunking, embedding, pgvector, or AI code exists in this
  * feature yet — that remains a later slice.
  *
  * Every function here is tenant-scoped via `withTenantContext`: the caller
@@ -27,7 +29,8 @@ import {
   type KnowledgeDocument,
   type KnowledgeDocumentStatus,
 } from './repository';
-import { createPresignedUploadUrl, headObject } from './storage';
+import { createPresignedUploadUrl, headObject, readObjectPrefix } from './storage';
+import { hasPdfSignature, PDF_SIGNATURE_LENGTH } from './pdf-signature';
 
 export type { KnowledgeDocument, KnowledgeDocumentStatus };
 export { DuplicateKnowledgeDocumentError };
@@ -180,6 +183,45 @@ export class UploadObjectContentTypeMismatchError extends Error {
 }
 
 /**
+ * Thrown when the uploaded object is not a PDF by signature (ADR-0021 /
+ * `./pdf-signature`) — including an object too short to hold a PDF header
+ * (zero bytes included). The message never contains any object bytes.
+ */
+export class UploadObjectNotPdfError extends Error {
+  constructor() {
+    super('The uploaded object is not a valid PDF.');
+    this.name = 'UploadObjectNotPdfError';
+  }
+}
+
+/**
+ * Thrown when the stored object was replaced between completion's HeadObject
+ * and its bounded prefix read (the `IfMatch` precondition failed, HTTP 412).
+ * Distinct from `DuplicateKnowledgeDocumentError` (a retried completion).
+ * Nothing was inserted; the client may retry the completion.
+ */
+export class UploadObjectChangedError extends Error {
+  constructor() {
+    super('The uploaded object changed during verification. Retry the completion.');
+    this.name = 'UploadObjectChangedError';
+  }
+}
+
+/**
+ * Thrown when object storage violates a response contract completion relies
+ * on (currently: HeadObject returned no ETag, so the prefix read cannot be
+ * bound to the checked object). Fail-closed: completion neither skips the
+ * precondition nor reads without it. Deliberately not mapped by the route —
+ * it surfaces as a generic 500, and nothing in the message is client-facing.
+ */
+export class ObjectStorageIntegrityError extends Error {
+  constructor() {
+    super('Object storage did not return an ETag for the uploaded object.');
+    this.name = 'ObjectStorageIntegrityError';
+  }
+}
+
+/**
  * Upload completion (ADR-0018 / `docs/technical/06-knowledge-document-storage.md`).
  * `storageKey` is re-derived here from `(clinicId, documentId)` — both
  * already trusted (`clinicId` from the caller's verified session,
@@ -190,9 +232,12 @@ export class UploadObjectContentTypeMismatchError extends Error {
  * for size/type — `filename` is the only value this function still trusts
  * from the client, exactly like `insertKnowledgeDocument`'s other metadata
  * columns; it is never used for any check. A stored `Content-Type` of
- * `application/pdf` proves only Scaleway's recorded metadata, not that the
- * bytes are actually a PDF (magic-byte validation is a future follow-up,
- * not this slice's job).
+ * `application/pdf` proves only Scaleway's recorded metadata, so after the
+ * metadata checks the real bytes are checked too, per ADR-0021: a bounded
+ * read of at most the first 1024 bytes (`readObjectPrefix`), conditioned on
+ * HeadObject's ETag so it reads the very object just checked, validated by
+ * the pure `hasPdfSignature`. Nothing else about the bytes is examined and
+ * they are never stored or logged.
  *
  * Inserts nothing when any check fails. `DuplicateKnowledgeDocumentError`
  * (from `insertKnowledgeDocument`) surfaces a completion retry after an
@@ -215,6 +260,27 @@ export async function completeKnowledgeDocumentUpload(
   }
   if (head.contentType !== ALLOWED_KNOWLEDGE_DOCUMENT_MIME_TYPE) {
     throw new UploadObjectContentTypeMismatchError();
+  }
+  // Too short to hold even `%PDF-1.0` (zero bytes included): reject without
+  // reading anything. This also keeps a zero-byte object from reaching the
+  // `size_bytes > 0` CHECK as a database error.
+  if (head.contentLength < PDF_SIGNATURE_LENGTH) {
+    throw new UploadObjectNotPdfError();
+  }
+  // Fail closed: without an ETag the read cannot be bound to this object.
+  if (!head.etag) {
+    throw new ObjectStorageIntegrityError();
+  }
+
+  const prefix = await readObjectPrefix(storageKey, head.etag);
+  if (prefix.outcome === 'not_found') {
+    throw new UploadObjectMissingError();
+  }
+  if (prefix.outcome === 'changed') {
+    throw new UploadObjectChangedError();
+  }
+  if (!hasPdfSignature(prefix.bytes)) {
+    throw new UploadObjectNotPdfError();
   }
 
   return withTenantContext(clinicId, (client) =>

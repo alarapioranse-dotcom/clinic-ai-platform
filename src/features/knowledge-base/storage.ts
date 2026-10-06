@@ -1,4 +1,9 @@
-import { S3Client, HeadObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
+import {
+  S3Client,
+  HeadObjectCommand,
+  GetObjectCommand,
+  PutObjectCommand,
+} from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import {
   getScalewayS3Endpoint,
@@ -81,6 +86,7 @@ export async function createPresignedUploadUrl(
 export interface HeadObjectResult {
   contentLength: number;
   contentType: string | undefined;
+  etag: string | undefined;
 }
 
 /**
@@ -93,8 +99,14 @@ export interface HeadObjectResult {
  * object at completion," never distinguishing those cases further.
  *
  * `Content-Type` proves only the stored metadata Scaleway recorded for the
- * object at upload time, not that the bytes are actually a PDF — magic-byte
- * validation is an explicit future follow-up, not this slice's job.
+ * object at upload time, not that the bytes are actually a PDF — the
+ * signature check in `readObjectPrefix` / `./pdf-signature` (ADR-0021) is
+ * what establishes that.
+ *
+ * `etag` is returned exactly as Scaleway sends it (including its quotes) so
+ * `readObjectPrefix` can bind its read to this same object with `IfMatch`.
+ * It is `undefined` when the response carried none; the caller must then
+ * fail closed rather than read without the precondition.
  */
 export async function headObject(key: string): Promise<HeadObjectResult | null> {
   try {
@@ -104,6 +116,7 @@ export async function headObject(key: string): Promise<HeadObjectResult | null> 
     return {
       contentLength: result.ContentLength ?? 0,
       contentType: result.ContentType,
+      etag: result.ETag,
     };
   } catch (err) {
     if (isNotFoundError(err)) {
@@ -124,4 +137,88 @@ function isNotFoundError(err: unknown): boolean {
   const metadata =
     '$metadata' in err ? (err as { $metadata?: { httpStatusCode?: number } }).$metadata : undefined;
   return metadata?.httpStatusCode === 404;
+}
+
+/**
+ * The one and only number of object bytes this feature ever reads server-side
+ * (ADR-0021: at most the first 1024 bytes, completion only, solely for the
+ * file-type signature check). A fixed constant on purpose — it is not a
+ * parameter, so no caller can widen the read.
+ */
+export const OBJECT_PREFIX_READ_BYTES = 1024;
+
+export type ReadObjectPrefixResult =
+  { outcome: 'ok'; bytes: Uint8Array } | { outcome: 'not_found' } | { outcome: 'changed' };
+
+/**
+ * Bounded prefix read for authoritative file-type validation (ADR-0021).
+ * Issues a ranged GET (`Range: bytes=0-1023`) for `key`, conditioned on
+ * `IfMatch: etag` where `etag` is the ETag HeadObject returned for the same
+ * key — so the bytes read are guaranteed to belong to the very object whose
+ * size and Content-Type were just checked. If the object was replaced in
+ * between, the store answers 412 and this returns `{ outcome: 'changed' }`.
+ *
+ * Bounds, enforced in layers:
+ * 1. The request carries `Range: bytes=0-1023`.
+ * 2. If the store ignores `Range` and would send more than 1024 bytes
+ *    (`ContentLength` absent or above the bound), the body is never
+ *    consumed — the stream is discarded and an error is thrown.
+ * 3. Whatever was read is cut to 1024 bytes before it is returned.
+ *
+ * The bytes are returned to the caller for the signature check only: they
+ * are never logged, persisted, or placed in an error message. No parsing,
+ * extraction, or AI happens here.
+ */
+export async function readObjectPrefix(key: string, etag: string): Promise<ReadObjectPrefixResult> {
+  try {
+    const result = await getClient().send(
+      new GetObjectCommand({
+        Bucket: getScalewayS3Bucket(),
+        Key: key,
+        Range: `bytes=0-${OBJECT_PREFIX_READ_BYTES - 1}`,
+        IfMatch: etag,
+      }),
+    );
+
+    const body = result.Body;
+    if (
+      !body ||
+      result.ContentLength === undefined ||
+      result.ContentLength > OBJECT_PREFIX_READ_BYTES
+    ) {
+      // Do not consume an unbounded body: release the connection instead.
+      (body as { destroy?: () => void } | undefined)?.destroy?.();
+      throw new Error('Object storage returned an unexpected response to a bounded ranged read.');
+    }
+
+    const bytes = await body.transformToByteArray();
+    return {
+      outcome: 'ok',
+      bytes:
+        bytes.length > OBJECT_PREFIX_READ_BYTES
+          ? bytes.subarray(0, OBJECT_PREFIX_READ_BYTES)
+          : bytes,
+    };
+  } catch (err) {
+    if (isNotFoundError(err)) {
+      return { outcome: 'not_found' };
+    }
+    if (isPreconditionFailedError(err)) {
+      return { outcome: 'changed' };
+    }
+    throw err;
+  }
+}
+
+function isPreconditionFailedError(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) {
+    return false;
+  }
+  const name = 'name' in err ? String((err as { name: unknown }).name) : '';
+  if (name === 'PreconditionFailed') {
+    return true;
+  }
+  const metadata =
+    '$metadata' in err ? (err as { $metadata?: { httpStatusCode?: number } }).$metadata : undefined;
+  return metadata?.httpStatusCode === 412;
 }

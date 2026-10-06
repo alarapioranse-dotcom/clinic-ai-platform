@@ -51,14 +51,47 @@ are not interchangeable and must not be conflated.
   authenticated session and the document id, never accepted as a `storage_key` from the client.
   **The actual object `ContentLength` returned by HeadObject is the authoritative size check**
   (must be `<= 10485760`), and **the actual stored `Content-Type` is the authoritative type check**
-  (must be exactly `application/pdf`). Only once both pass does the server insert the
-  `knowledge_documents` row. **A stored `Content-Type` of `application/pdf` proves only that
-  Scaleway recorded that metadata for the object — it does not prove the bytes are actually a
-  PDF.** Verifying that would require reading the file's magic bytes, which this slice does not do;
-  magic-byte/PDF-signature validation is a future follow-up, not implemented here.
+  (must be exactly `application/pdf`). **A stored `Content-Type` of `application/pdf` proves only
+  that Scaleway recorded that metadata for the object — it does not prove the bytes are actually a
+  PDF.** So after those checks the server also verifies the file's signature, per
+  [ADR-0021](../adr/0021-bounded-prefix-read.md): an object shorter than 8 bytes (zero bytes
+  included) is rejected without any read; otherwise the server reads **at most the first 1024
+  bytes** (`Range: bytes=0-1023`, a fixed constant, server-side credentials) and the object must
+  begin, at byte offset 0 exactly, with `%PDF-X.Y` where `X.Y` is one of `1.0`–`1.7` or `2.0`,
+  and that header must then end: the ninth byte must be absent (the object is exactly those 8
+  bytes), a line feed (`0x0A`), or a carriage return (`0x0D`) — any other ninth byte is rejected.
+  Rejected: `%PDF-1.8`, `%PDF-3.0`, `%PDF-X.Y`, lower-case `%pdf-`, a BOM or whitespace before the
+  signature, the signature at any other offset, other file types, and any other character after
+  the version — a further digit (`%PDF-1.77`, `%PDF-1.10`, `%PDF-2.00`), a space, a tab, NUL, a
+  dot, a letter, a dash (`%PDF-1.7x`, `%PDF-1.7.1`, `%PDF-1.7-beta`). The read is conditioned on `If-Match` with the ETag
+  HeadObject returned, so the bytes checked belong to the very object whose size and type were
+  just checked. Only once everything passes does the server insert the `knowledge_documents`
+  row. The 1024 bytes are never stored, logged, returned to the client, or placed in an error
+  message, and nothing is parsed, extracted, or sent to any AI.
 - **Failed completion inserts no row.** If HeadObject finds nothing, or the actual size or
-  Content-Type fails its check, no `knowledge_documents` row is ever created for that upload
-  attempt.
+  Content-Type fails its check, or the object is not a PDF by signature, no `knowledge_documents`
+  row is ever created for that upload attempt. Outcomes: 404 (no object, including one that
+  vanished before the prefix read), 422 (too large, wrong Content-Type, not a PDF), 409 with code
+  `object_changed` (the object was replaced between HeadObject and the prefix read — the
+  `If-Match` precondition failed; distinct from the `conflict` code of a retried completion), and
+  a generic 500 if HeadObject returns no ETag (completion fails closed: it never reads without
+  the precondition).
+- **What the signature check does not prove.** It shows only that the object is not obviously
+  some other file type. It does not prove the file is safe or well-formed — a polyglot can pass,
+  and PDFs can carry active content. Any later step that reads the file's contents must treat it
+  as untrusted. It also does not stop the uploader from overwriting the object **after**
+  completion: the presigned PUT URL stays valid for its 300-second expiry, is not single-use, and
+  the bucket has no versioning; the ETag is not persisted (that would need a schema change). A
+  later slice that reads the file's contents must re-validate.
+- **Production validation prerequisites (deferred).** Everything above is verified in tests
+  against a faked storage client only; none of it has run against the real bucket, because
+  production has no active staff identity and none will be created just to test. Before this path
+  can be relied on in production, a first legitimate upload must confirm: the application's storage
+  key can read objects (a read permission it may not hold today — granting it is a production
+  infrastructure change that needs the Owner's explicit approval); the store honors
+  `Range: bytes=0-1023`; HeadObject returns an ETag (without one every completion fails closed
+  with a 500); the store honors `If-Match` on GET; the object stays private; and a rejected
+  object leaves no `knowledge_documents` row.
 - **Orphan objects are an accepted limitation of this slice.** If the browser's PUT to Scaleway
   succeeds but the client never calls the completion endpoint (a closed tab, a crashed browser, a
   network failure after the PUT but before completion), the object remains in the private bucket
@@ -80,6 +113,10 @@ POST /api/knowledge-documents/:id/complete
   2. HeadObject against the re-derived storage_key. 404 if missing; 422 if the actual
      ContentLength/Content-Type fails the authoritative check above (see "Upload is two
      validated stages, not one"). No row created on failure.
+  2a. Bounded prefix read (ADR-0021): at most the first 1024 bytes, If-Match the HeadObject
+     ETag; the object must start with %PDF-1.0 ... %PDF-1.7 or %PDF-2.0. 422 if not a PDF
+     (or shorter than 8 bytes), 409 object_changed on a failed precondition, 404 if the object
+     vanished, 500 if HeadObject returned no ETag. No row created on failure.
   3. INSERT knowledge_documents (status = 'processing').  ─────► 201 returned to the caller
      immediately; steps 4-6 below are a later slice's work, not yet implemented.
   4. Extract text content from the file.

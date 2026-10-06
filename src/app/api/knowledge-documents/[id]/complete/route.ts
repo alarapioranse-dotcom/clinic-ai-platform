@@ -11,6 +11,8 @@ import {
   UploadObjectMissingError,
   UploadObjectTooLargeError,
   UploadObjectContentTypeMismatchError,
+  UploadObjectNotPdfError,
+  UploadObjectChangedError,
   DuplicateKnowledgeDocumentError,
 } from '@/features/knowledge-base';
 
@@ -46,8 +48,13 @@ function missingObjectResponse() {
  * `filename` is the only client-supplied value this endpoint still trusts —
  * it is metadata only, never used for any check. The actual
  * ContentLength/Content-Type come from HeadObject inside the feature layer
- * and are authoritative; this route only translates the feature layer's
- * typed errors to the documented HTTP shape.
+ * and are authoritative, and the file-type signature comes from a bounded
+ * prefix read of at most 1024 bytes (ADR-0021); this route only translates
+ * the feature layer's typed errors to the documented HTTP shape: 404
+ * (no object), 422 (too large, wrong Content-Type, not a PDF), 409 with code
+ * `conflict` (retried completion) or `object_changed` (the object was
+ * replaced mid-verification). Any other error, including
+ * `ObjectStorageIntegrityError`, is left to surface as a generic 500.
  */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const token = request.cookies.get(SESSION_COOKIE_NAME)?.value;
@@ -115,11 +122,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
     if (
       err instanceof UploadObjectTooLargeError ||
-      err instanceof UploadObjectContentTypeMismatchError
+      err instanceof UploadObjectContentTypeMismatchError ||
+      err instanceof UploadObjectNotPdfError
     ) {
       return NextResponse.json(
         { error: { code: 'unprocessable', message: err.message } },
         { status: 422 },
+      );
+    }
+    if (err instanceof UploadObjectChangedError) {
+      return NextResponse.json(
+        { error: { code: 'object_changed', message: err.message } },
+        { status: 409 },
       );
     }
     if (err instanceof DuplicateKnowledgeDocumentError) {

@@ -21,6 +21,7 @@ vi.mock('@aws-sdk/client-s3', () => {
     S3Client: MockS3Client,
     HeadObjectCommand: MockCommand,
     PutObjectCommand: MockCommand,
+    GetObjectCommand: MockCommand,
   };
 });
 
@@ -62,12 +63,27 @@ describe('headObject', () => {
     expect(await headObject('clinic-id/missing-document-id')).toBeNull();
   });
 
-  it('returns the actual ContentLength/Content-Type when the object exists', async () => {
+  it('returns the actual ContentLength/Content-Type/ETag when the object exists', async () => {
+    sendMock.mockResolvedValueOnce({
+      ContentLength: 2048,
+      ContentType: 'application/pdf',
+      ETag: '"9b2cf535f27731c974343645a3985328"',
+    });
+
+    await expect(headObject('clinic-id/document-id')).resolves.toEqual({
+      contentLength: 2048,
+      contentType: 'application/pdf',
+      etag: '"9b2cf535f27731c974343645a3985328"',
+    });
+  });
+
+  it('returns an undefined etag (never a made-up value) when the response carries none', async () => {
     sendMock.mockResolvedValueOnce({ ContentLength: 2048, ContentType: 'application/pdf' });
 
     await expect(headObject('clinic-id/document-id')).resolves.toEqual({
       contentLength: 2048,
       contentType: 'application/pdf',
+      etag: undefined,
     });
   });
 

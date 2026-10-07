@@ -56,6 +56,47 @@ export const MAX_KNOWLEDGE_DOCUMENT_SIZE_BYTES = 10 * 1024 * 1024;
 /** Short-lived, per ADR-0018's "short expiry" requirement for the presigned PUT. */
 const PRESIGNED_UPLOAD_URL_EXPIRY_SECONDS = 300;
 
+/**
+ * Roadmap P5 Slice 1C: the staff roles that may manage the clinic's knowledge
+ * base — docs/technical/03-api-contracts.md's Knowledge base table and
+ * docs/product/04-sitemap.md (owner, admin; never practitioner or
+ * receptionist). The single source for the GET route and both knowledge-base
+ * pages. The API is the authorization boundary; the pages enforce it again
+ * server-side so a denied role never receives the screen.
+ */
+export const KNOWLEDGE_BASE_MANAGER_ROLES: ('owner' | 'admin')[] = ['owner', 'admin'];
+
+/**
+ * The shape `GET /api/knowledge-documents` returns for each document (Owner
+ * decision D7 = B): everything a staff screen needs to list documents and
+ * their status, and nothing else. `storageKey` (which embeds the clinic id),
+ * `clinicId` and `uploadedBy` are deliberately omitted — the browser has no
+ * use for them.
+ */
+export interface KnowledgeDocumentSummary {
+  id: string;
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+  status: KnowledgeDocumentStatus;
+  failedReason: string | null;
+  createdAt: Date;
+  readyAt: Date | null;
+}
+
+export function toKnowledgeDocumentSummary(document: KnowledgeDocument): KnowledgeDocumentSummary {
+  return {
+    id: document.id,
+    filename: document.filename,
+    mimeType: document.mimeType,
+    sizeBytes: document.sizeBytes,
+    status: document.status,
+    failedReason: document.failedReason,
+    createdAt: document.createdAt,
+    readyAt: document.readyAt,
+  };
+}
+
 export async function getKnowledgeDocumentsForClinic(
   clinicId: string,
 ): Promise<KnowledgeDocument[]> {

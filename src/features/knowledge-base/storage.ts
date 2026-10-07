@@ -41,6 +41,18 @@ function getClient(): S3Client {
       // local MinIO stand-in (ADR-0018 Decision 7); virtual-hosted-style
       // buys nothing here and would need per-environment tuning instead.
       forcePathStyle: true,
+      // The SDK's default ('WHEN_SUPPORTED') adds flexible checksums this
+      // upload flow cannot satisfy. On the presigned PUT it embeds
+      // `x-amz-sdk-checksum-algorithm=CRC32` and `x-amz-checksum-crc32` of an
+      // EMPTY body into the URL, so a store that verifies it would reject
+      // every real file the browser uploads. On `readObjectPrefix`'s ranged
+      // GET it sends `x-amz-checksum-mode: ENABLED`, inviting a whole-object
+      // checksum to be validated against a 1024-byte partial body. Neither
+      // checksum is required by the operations used here; integrity of the
+      // stored object is still established at completion by HeadObject plus
+      // the If-Match-bound prefix read (ADR-0021).
+      requestChecksumCalculation: 'WHEN_REQUIRED',
+      responseChecksumValidation: 'WHEN_REQUIRED',
       credentials: {
         accessKeyId: getScalewayAccessKeyId(),
         secretAccessKey: getScalewaySecretAccessKey(),

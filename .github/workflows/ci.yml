@@ -7,7 +7,7 @@ on:
 
 jobs:
   checks:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # PostgreSQL for the P1 tenant-isolation slice (ADR-0006). RLS cannot be
     # meaningfully tested against an in-memory or mocked database — see
     # docs/technical/02-tenant-isolation-testing.md.
@@ -39,9 +39,9 @@ jobs:
       # embedded in a migration file — must match the password above.
       APP_USER_PASSWORD: app_user_dev_password
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version-file: '.nvmrc'
           cache: 'npm'

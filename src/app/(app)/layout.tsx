@@ -21,7 +21,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex min-h-screen flex-col">
-      <AppShellNav />
+      <AppShellNav role={session.role} />
       <main className="flex-1">{children}</main>
     </div>
   );

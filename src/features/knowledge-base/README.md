@@ -3,7 +3,7 @@
 Will own each clinic's knowledge source — services, pricing, hours, and
 policies — used to ground automated replies to patients.
 
-## Current scope (P5 Slice 1B: "upload initiation and completion")
+## Current scope (P5 Slices 1A–1C: persistence, upload, and the staff screens)
 
 `knowledge_documents` (`db/migrations/0013_knowledge_documents.sql`,
 `0014_knowledge_documents_insert_grant.sql`) is a file-upload record —
@@ -25,8 +25,13 @@ place (`docs/technical/01-database-schema.md`).
 - `completeKnowledgeDocumentUpload(clinicId, uploadedBy, documentId, filename)`
   (Slice 1B) — upload completion. Re-derives `storage_key` from
   `(clinicId, documentId)` (never from client input), calls HeadObject, and
-  only inserts the row once the actual `ContentLength`/`Content-Type` pass —
+  only inserts the row once the actual `ContentLength`/`Content-Type` pass and
+  a bounded read of at most 1024 bytes shows a valid PDF header (ADR-0021) —
   this is the one legitimate INSERT path Slice 1A deferred.
+- `KNOWLEDGE_BASE_MANAGER_ROLES` / `toKnowledgeDocumentSummary` (Slice 1C) —
+  the owner/admin role list shared by `GET /api/knowledge-documents` and the
+  `/dashboard/knowledge-base` screens, and the list item shape without
+  `storageKey`, `clinicId` or `uploadedBy`.
 
 **Not yet implemented** (a later slice, not this one):
 
@@ -34,10 +39,8 @@ place (`docs/technical/01-database-schema.md`).
 - Orphan-object reconciliation (an object uploaded but never completed is an
   accepted limitation of this slice, not a bug — see
   `docs/technical/06-knowledge-document-storage.md`).
-- Magic-byte/PDF-signature validation (HeadObject's Content-Type proves only
-  Scaleway's stored metadata, not the actual bytes).
 - Extraction, chunking, embeddings, pgvector, or any AI/retrieval code.
-- Any GET/list HTTP route (Slice 1A's reads have no route yet either).
+- A single-document GET route (the list route covers the Slice 1C screens).
 
 Row Level Security on `knowledge_documents` is the actual tenant isolation
 boundary, not application-side filtering (charter §5), exactly like

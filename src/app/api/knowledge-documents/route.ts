@@ -8,12 +8,54 @@ import {
 } from '@/features/auth';
 import {
   createKnowledgeDocumentUploadIntent,
+  getKnowledgeDocumentsForClinic,
+  toKnowledgeDocumentSummary,
+  KNOWLEDGE_BASE_MANAGER_ROLES,
   InvalidDeclaredMimeTypeError,
   DeclaredSizeTooLargeError,
 } from '@/features/knowledge-base';
 
 function invalidRequest(message: string) {
   return NextResponse.json({ error: { code: 'invalid_request', message } }, { status: 400 });
+}
+
+/**
+ * roadmap P5 Slice 1C: GET /api/knowledge-documents — lists the caller's
+ * clinic's knowledge documents with their status, per
+ * docs/technical/03-api-contracts.md's Knowledge base table (owner/admin
+ * only). `clinicId` comes only from the validated session; the request
+ * carries no parameters. RLS is the isolation boundary — the feature layer
+ * reads under `withTenantContext`, with no manual clinic filter here.
+ *
+ * Reads database rows only: it never touches object storage or file bytes.
+ * Each item is `toKnowledgeDocumentSummary`'s shape, which omits
+ * `storageKey`, `clinicId` and `uploadedBy` (Owner decision D7 = B).
+ */
+export async function GET(request: NextRequest) {
+  const token = request.cookies.get(SESSION_COOKIE_NAME)?.value;
+  const session = await validateSession(token);
+
+  if (!session) {
+    return NextResponse.json(
+      { error: { code: 'unauthorized', message: 'No valid session.' } },
+      { status: 401 },
+    );
+  }
+
+  try {
+    requireRole(session, KNOWLEDGE_BASE_MANAGER_ROLES);
+  } catch (err) {
+    if (err instanceof ForbiddenRoleError) {
+      return NextResponse.json(
+        { error: { code: 'forbidden', message: 'Your role does not permit this action.' } },
+        { status: 403 },
+      );
+    }
+    throw err;
+  }
+
+  const documents = await getKnowledgeDocumentsForClinic(session.clinicId);
+  return NextResponse.json({ data: documents.map(toKnowledgeDocumentSummary) });
 }
 
 /**

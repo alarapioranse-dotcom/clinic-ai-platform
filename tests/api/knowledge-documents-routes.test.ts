@@ -2,9 +2,9 @@ import { describe, it, expect, afterAll, beforeEach, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { NextRequest } from 'next/server';
 import { closePool, withTenantContext } from '@/lib/db';
-import { createTestClinic, createTestStaffMember } from '../fixtures';
+import { createTestClinic, createTestKnowledgeDocument, createTestStaffMember } from '../fixtures';
 import { POST as signInRoute } from '@/app/api/auth/sign-in/route';
-import { POST as initiateRoute } from '@/app/api/knowledge-documents/route';
+import { GET as listRoute, POST as initiateRoute } from '@/app/api/knowledge-documents/route';
 import { POST as completeRoute } from '@/app/api/knowledge-documents/[id]/complete/route';
 
 /**
@@ -100,6 +100,24 @@ function complete(id: string, cookieValue: string | undefined, body: unknown) {
     postRequest(`http://localhost/api/knowledge-documents/${id}/complete`, cookieValue, body),
     { params: Promise.resolve({ id }) },
   );
+}
+
+function list(cookieValue: string | undefined) {
+  return listRoute(
+    new NextRequest('http://localhost/api/knowledge-documents', {
+      method: 'GET',
+      headers: cookieValue ? { cookie: `session=${cookieValue}` } : {},
+    }),
+  );
+}
+
+interface ListedDocument {
+  id: string;
+  filename: string;
+  status: string;
+  failedReason: string | null;
+  readyAt: string | null;
+  [key: string]: unknown;
 }
 
 const NONEXISTENT_ID = '00000000-0000-0000-0000-000000000000';
@@ -622,5 +640,161 @@ describe('POST /api/knowledge-documents/:id/complete (completion)', () => {
     expect(second.status).toBe(409);
     const body: { error: { code: string } } = await second.json();
     expect(body.error.code).toBe('conflict');
+  });
+});
+
+describe('GET /api/knowledge-documents (list, roadmap P5 Slice 1C)', () => {
+  beforeEach(() => {
+    headObjectMock.mockReset();
+    readObjectPrefixMock.mockReset();
+    createPresignedUploadUrlMock.mockReset();
+  });
+
+  afterAll(async () => {
+    await closePool();
+  });
+
+  it('returns 401 with no session', async () => {
+    const response = await list(undefined);
+    expect(response.status).toBe(401);
+  });
+
+  for (const role of OTHER_ROLES) {
+    it(`returns 403 for role "${role}"`, async () => {
+      const clinic = await createTestClinic(`KdocListRole-${role}`);
+      const token = await signInAs(clinic.id, `KdocListRole-${role}`, role);
+
+      const response = await list(token);
+
+      expect(response.status).toBe(403);
+      const body: { error: { code: string } } = await response.json();
+      expect(body.error.code).toBe('forbidden');
+    });
+  }
+
+  for (const role of KNOWLEDGE_BASE_ROLES) {
+    it(`returns 200 with an empty list for role "${role}" in a clinic with no documents`, async () => {
+      const clinic = await createTestClinic(`KdocListEmpty-${role}`);
+      const token = await signInAs(clinic.id, `KdocListEmpty-${role}`, role);
+
+      const response = await list(token);
+
+      expect(response.status).toBe(200);
+      const body: { data: unknown[] } = await response.json();
+      expect(body.data).toEqual([]);
+    });
+  }
+
+  it('lists processing, ready and failed documents with their status fields', async () => {
+    const clinic = await createTestClinic('KdocListStatuses');
+    const uploader = await createTestStaffMember(clinic.id, 'KdocListStatusesUploader', {
+      role: 'admin',
+    });
+    const processing = await createTestKnowledgeDocument(clinic.id, uploader.id, {
+      status: 'processing',
+    });
+    const ready = await createTestKnowledgeDocument(clinic.id, uploader.id, { status: 'ready' });
+    const failed = await createTestKnowledgeDocument(clinic.id, uploader.id, {
+      status: 'failed',
+      failedReason: 'test failure reason',
+    });
+    const token = await signInAs(clinic.id, 'KdocListStatusesOwner', 'owner');
+
+    const response = await list(token);
+
+    expect(response.status).toBe(200);
+    const body: { data: ListedDocument[] } = await response.json();
+    const byId = new Map(body.data.map((item) => [item.id, item]));
+    expect(byId.size).toBe(3);
+    expect(byId.get(processing.id)).toMatchObject({
+      status: 'processing',
+      failedReason: null,
+      readyAt: null,
+    });
+    expect(byId.get(ready.id)?.status).toBe('ready');
+    expect(byId.get(ready.id)?.readyAt).toEqual(expect.any(String));
+    expect(byId.get(failed.id)).toMatchObject({
+      status: 'failed',
+      failedReason: 'test failure reason',
+      readyAt: null,
+    });
+  });
+
+  it('returns exactly the summary fields: no storageKey, clinicId or uploadedBy', async () => {
+    const clinic = await createTestClinic('KdocListShape');
+    const uploader = await createTestStaffMember(clinic.id, 'KdocListShapeUploader', {
+      role: 'owner',
+    });
+    const document = await createTestKnowledgeDocument(clinic.id, uploader.id, {
+      filename: 'price-list.pdf',
+      sizeBytes: 4096,
+    });
+    const token = await signInAs(clinic.id, 'KdocListShapeAdmin', 'admin');
+
+    const response = await list(token);
+
+    const body: { data: ListedDocument[] } = await response.json();
+    expect(body.data).toHaveLength(1);
+    const item = body.data[0]!;
+    expect(Object.keys(item).sort()).toEqual(
+      [
+        'createdAt',
+        'failedReason',
+        'filename',
+        'id',
+        'mimeType',
+        'readyAt',
+        'sizeBytes',
+        'status',
+      ].sort(),
+    );
+    expect(item).toMatchObject({
+      id: document.id,
+      filename: 'price-list.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 4096,
+    });
+    const raw = JSON.stringify(body);
+    expect(raw).not.toContain(document.storageKey);
+    expect(raw).not.toContain(clinic.id);
+    expect(raw).not.toContain(uploader.id);
+  });
+
+  it("never returns another clinic's documents (cross-clinic isolation)", async () => {
+    const clinicA = await createTestClinic('KdocListIsolationA');
+    const clinicB = await createTestClinic('KdocListIsolationB');
+    const uploaderA = await createTestStaffMember(clinicA.id, 'KdocListIsolationUploaderA', {
+      role: 'owner',
+    });
+    const uploaderB = await createTestStaffMember(clinicB.id, 'KdocListIsolationUploaderB', {
+      role: 'owner',
+    });
+    const docA = await createTestKnowledgeDocument(clinicA.id, uploaderA.id);
+    const docB1 = await createTestKnowledgeDocument(clinicB.id, uploaderB.id);
+    const docB2 = await createTestKnowledgeDocument(clinicB.id, uploaderB.id);
+    const tokenA = await signInAs(clinicA.id, 'KdocListIsolationOwnerA', 'owner');
+    const tokenB = await signInAs(clinicB.id, 'KdocListIsolationOwnerB', 'owner');
+
+    const bodyA: { data: ListedDocument[] } = await (await list(tokenA)).json();
+    const bodyB: { data: ListedDocument[] } = await (await list(tokenB)).json();
+
+    expect(bodyA.data.map((item) => item.id)).toEqual([docA.id]);
+    expect(bodyB.data.map((item) => item.id).sort()).toEqual([docB1.id, docB2.id].sort());
+  });
+
+  it('never touches object storage (no HeadObject, prefix read or presigning)', async () => {
+    const clinic = await createTestClinic('KdocListNoStorage');
+    const uploader = await createTestStaffMember(clinic.id, 'KdocListNoStorageUploader', {
+      role: 'owner',
+    });
+    await createTestKnowledgeDocument(clinic.id, uploader.id);
+    const token = await signInAs(clinic.id, 'KdocListNoStorageOwner', 'owner');
+
+    const response = await list(token);
+
+    expect(response.status).toBe(200);
+    expect(headObjectMock).not.toHaveBeenCalled();
+    expect(readObjectPrefixMock).not.toHaveBeenCalled();
+    expect(createPresignedUploadUrlMock).not.toHaveBeenCalled();
   });
 });

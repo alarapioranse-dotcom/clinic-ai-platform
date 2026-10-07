@@ -37,6 +37,8 @@ P1, P2, P3 (A, B, C) and P4 are closed. See `CLAUDE.md` Status for the authorita
 - Slice 1A (schema) and Slice 1B (upload initiate and complete) are merged. P5 overall is not closed.
 - Upload accepts PDF only, at most 10485760 bytes. Completion checks real ContentLength and Content-Type through HeadObject.
 - Completion also validates the PDF signature through a bounded prefix read (ADR-0021, PR #79).
+- The storage client disables the SDK's default checksums so the presigned PUT and the ranged GET carry none (PR #82).
+- Slice 1C (PR #83): owner/admin screens at `/dashboard/knowledge-base` and `/upload`, and `GET /api/knowledge-documents` (no `storageKey`, `clinicId` or `uploadedBy`). Uploaded documents show as Processing; nothing moves them to Ready yet.
 - Not built: extraction, chunking, embeddings, retrieval, any AI call.
 
 ## 8. Current blockers
@@ -93,7 +95,7 @@ Under contractual verification, not selected. Per the Owner's correspondence (no
 
 ## 15. Last verified state and date
 
-Verified by repository inspection on 2026-10-06. `main` was at `66af578` (PR #79). Test counts were not re-run; PR #79 reported 444/444 (319 at Slice 1B).
+Verified by repository inspection on 2026-10-07. `main` was at `e10febb` (PR #83). Test counts were not re-run in CI logs; PR #83 reported 463/463 locally (444 at PR #79, 319 at Slice 1B).
 
 ## CLAUDE CODE / EXECUTION READINESS
 

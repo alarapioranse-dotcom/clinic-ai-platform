@@ -39,9 +39,20 @@ const MIGRATION_FILES = readdirSync(MIGRATIONS_DIR)
   .sort()
   .map((file) => ({ file, sql: readFileSync(join(MIGRATIONS_DIR, file), 'utf8') }));
 
-/** Swaps every reference to app_user/auth_bootstrap for throwaway, per-test role names. */
-function roleSubstitutedSql(sql: string, appUserName: string, authBootstrapName: string): string {
-  return sql.replaceAll('app_user', appUserName).replaceAll('auth_bootstrap', authBootstrapName);
+/**
+ * Swaps every reference to the cluster-wide roles the migrations manage (app_user, auth_bootstrap,
+ * and clinic_settings_writer from 0015 / ADR-0022) for throwaway, per-test role names.
+ */
+function roleSubstitutedSql(
+  sql: string,
+  appUserName: string,
+  authBootstrapName: string,
+  clinicSettingsWriterName: string,
+): string {
+  return sql
+    .replaceAll('app_user', appUserName)
+    .replaceAll('auth_bootstrap', authBootstrapName)
+    .replaceAll('clinic_settings_writer', clinicSettingsWriterName);
 }
 
 function withDatabaseName(connectionString: string, database: string): string {
@@ -64,6 +75,7 @@ interface Scratch {
   ownerConnectionString: string;
   appUserName: string;
   authBootstrapName: string;
+  clinicSettingsWriterName: string;
 }
 
 /**
@@ -81,6 +93,7 @@ async function createScratchOwner(admin: Client): Promise<Scratch> {
   const ownerPassword = `pw_${suffix}`;
   const appUserName = `test_app_user_${suffix}`;
   const authBootstrapName = `test_auth_bootstrap_${suffix}`;
+  const clinicSettingsWriterName = `test_csw_${suffix}`; // short: role names truncate at 63 bytes
 
   await admin.query(
     `CREATE ROLE ${ownerRoleName} LOGIN PASSWORD '${ownerPassword}' NOSUPERUSER NOBYPASSRLS CREATEROLE`,
@@ -111,6 +124,7 @@ async function createScratchOwner(admin: Client): Promise<Scratch> {
     ownerConnectionString,
     appUserName,
     authBootstrapName,
+    clinicSettingsWriterName,
   };
 }
 
@@ -119,6 +133,7 @@ async function dropScratchOwner(admin: Client, scratch: Scratch): Promise<void> 
   await admin.query(`DROP ROLE IF EXISTS ${scratch.ownerRoleName}`);
   await admin.query(`DROP ROLE IF EXISTS ${scratch.appUserName}`);
   await admin.query(`DROP ROLE IF EXISTS ${scratch.authBootstrapName}`);
+  await admin.query(`DROP ROLE IF EXISTS ${scratch.clinicSettingsWriterName}`);
 }
 
 describe('full migration chain (0001-0008) against a non-superuser, non-BYPASSRLS owner role', () => {
@@ -142,7 +157,12 @@ describe('full migration chain (0001-0008) against a non-superuser, non-BYPASSRL
     await ownerClient.connect();
     try {
       for (const { file, sql } of MIGRATION_FILES) {
-        const substituted = roleSubstitutedSql(sql, scratch.appUserName, scratch.authBootstrapName);
+        const substituted = roleSubstitutedSql(
+          sql,
+          scratch.appUserName,
+          scratch.authBootstrapName,
+          scratch.clinicSettingsWriterName,
+        );
         await expect(
           ownerClient.query(substituted),
           `${file} failed against a genuine non-superuser, non-BYPASSRLS owner role`,
@@ -151,7 +171,7 @@ describe('full migration chain (0001-0008) against a non-superuser, non-BYPASSRL
 
       const roleRows = await admin.query(
         'SELECT rolname, rolsuper, rolbypassrls, rolcanlogin FROM pg_roles WHERE rolname = ANY($1) ORDER BY rolname',
-        [[scratch.appUserName, scratch.authBootstrapName]],
+        [[scratch.appUserName, scratch.authBootstrapName, scratch.clinicSettingsWriterName]],
       );
       expect(roleRows.rows).toEqual([
         {
@@ -162,6 +182,12 @@ describe('full migration chain (0001-0008) against a non-superuser, non-BYPASSRL
         },
         {
           rolname: scratch.authBootstrapName,
+          rolsuper: false,
+          rolbypassrls: false,
+          rolcanlogin: false,
+        },
+        {
+          rolname: scratch.clinicSettingsWriterName,
           rolsuper: false,
           rolbypassrls: false,
           rolcanlogin: false,
@@ -182,7 +208,12 @@ describe('full migration chain (0001-0008) against a non-superuser, non-BYPASSRL
     try {
       for (const { sql } of MIGRATION_FILES) {
         await ownerClient.query(
-          roleSubstitutedSql(sql, scratch.appUserName, scratch.authBootstrapName),
+          roleSubstitutedSql(
+            sql,
+            scratch.appUserName,
+            scratch.authBootstrapName,
+            scratch.clinicSettingsWriterName,
+          ),
         );
       }
     } finally {

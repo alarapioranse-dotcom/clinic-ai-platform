@@ -7,14 +7,16 @@ export const marketingNav: NavItem[] = [
 ];
 
 /**
- * Signed-in navigation. The knowledge-base entry lists its roles literally
- * rather than importing `KNOWLEDGE_BASE_MANAGER_ROLES`: this module is also
- * imported by marketing components, and the knowledge-base feature's entry
- * point pulls in server-only code. A unit test keeps the two lists equal.
+ * Signed-in navigation. Role-restricted entries list their roles literally
+ * rather than importing `KNOWLEDGE_BASE_MANAGER_ROLES` /
+ * `CLINIC_SETTINGS_MANAGER_ROLES`: this module is also imported by marketing
+ * components, and those features' entry points pull in server-only code.
+ * Unit tests keep each list equal to its feature's.
  */
 export const appNav: NavItem[] = [
   { label: 'لوحة التحكم', href: '/dashboard' },
   { label: 'قاعدة المعرفة', href: '/dashboard/knowledge-base', roles: ['owner', 'admin'] },
+  { label: 'إعدادات العيادة', href: '/dashboard/settings/clinic', roles: ['owner', 'admin'] },
 ];
 
 /**

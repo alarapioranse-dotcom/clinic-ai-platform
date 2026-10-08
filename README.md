@@ -174,6 +174,34 @@ at `/login` as `demo-staff@example.test`.
   UPDATE staff_members SET status = 'deactivated' WHERE id = '00000000-0000-0000-0000-000000000002';
   ```
 
+## Provisioning a clinic
+
+`scripts/provision-clinic.ts` is the only way a clinic is created
+([ADR-0023](docs/adr/0023-clinic-provisioning-one-time-invitations.md)). The operator runs it with
+`DATABASE_URL` (the owner/migration role), like `db:migrate`. In one transaction it creates the
+clinic (status `active`, no working hours yet) and a one-time owner invitation, then prints the
+invitation link once. It never creates a password or a staff account: the owner chooses their own
+password at `/invite`, then signs in and sets working hours in `/dashboard/settings/clinic`.
+
+```bash
+npx tsx scripts/provision-clinic.ts --name "Clinic name" --owner-email owner@example.com \
+  --timezone Europe/Athens --contact-phone "+30 ..." [--contact-email info@example.com] \
+  [--dry-run] [--confirm-production]
+
+# Lost or expired link, owner has not accepted yet:
+npx tsx scripts/provision-clinic.ts --reissue --clinic-id <uuid> [--dry-run] [--confirm-production]
+```
+
+- `NEXT_PUBLIC_APP_URL` must be the deployed URL: the link is built from it. With
+  `NEXT_PUBLIC_APP_ENV=production` the script refuses to run without `--confirm-production`, and
+  refuses a non-`https` URL.
+- `--dry-run` runs every check and the inserts, then rolls back. Nothing is saved and no link is
+  printed.
+- It refuses an owner email that already belongs to any staff account, or that is already another
+  clinic's owner email. Emails are stored trimmed and lowercase.
+- The link is valid for 72 hours and works once. Only its SHA-256 is stored, so it cannot be shown
+  again; reissue instead. Send it to the owner privately, and do not screenshot it.
+
 ## Environment variables
 
 Read exclusively by `src/lib/env.ts`, which throws at startup if a required variable is missing

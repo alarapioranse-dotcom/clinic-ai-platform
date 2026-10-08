@@ -2,15 +2,15 @@
  * Public entry point for the `invitations` feature. Only this module is a
  * valid import target for other features or for `src/app/**` code.
  *
- * Scope (ADR-0023, Accepted; Owner decisions I1–I3 for PR B): accepting a
- * one-time invitation. Creating invitations (the provisioning script, the
- * staff page) is a later slice.
+ * Scope (ADR-0023, Accepted): accepting a one-time invitation (PR B), and the
+ * token and link helpers the operator provisioning script uses to issue one
+ * (PR C, scripts/provision-clinic.ts). The staff page is a later slice.
  *
  * Acceptance creates the staff member and nothing else: per ADR-0023
  * decision 3 it creates **no session**. The invitee then signs in through
  * the existing sign-in flow.
  */
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 
 import { acceptInvitationInDatabase } from '@/lib/db';
 import { hashPassword, validateNewPassword } from '@/features/auth';
@@ -28,6 +28,24 @@ const RAW_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
  */
 export function hashInvitationToken(rawToken: string): string {
   return createHash('sha256').update(rawToken).digest('hex');
+}
+
+/**
+ * A new raw invitation token: 32 bytes from the cryptographically secure
+ * generator, base64url without padding (43 characters). The caller stores
+ * only `hashInvitationToken(token)` and shows the raw value once.
+ */
+export function generateInvitationToken(): string {
+  return randomBytes(32).toString('base64url');
+}
+
+/**
+ * The one-time link for a raw token: `<app url>/invite#<token>`. The token is
+ * in the URL fragment so browsers never send it to the server (ADR-0023
+ * decision 2).
+ */
+export function buildInvitationLink(appUrl: string, rawToken: string): string {
+  return `${appUrl.replace(/\/+$/, '')}/invite#${rawToken}`;
 }
 
 export type AcceptInvitationResult =

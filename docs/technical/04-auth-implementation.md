@@ -105,28 +105,51 @@ are used once per request, at the very start, never for the request's actual dat
 
 ## Invitation acceptance flow
 
-Implements the Invitation → StaffMember transition B names but doesn't mechanize
-([`docs/domain/01-entities.md`](../domain/01-entities.md), Invitation lifecycle: "Pending →
-Accepted... the invitee transitions it to Accepted"):
+Implements the Invitation → StaffMember transition
+([`docs/domain/01-entities.md`](../domain/01-entities.md), Invitation lifecycle) as decided in
+[ADR-0023](../adr/0023-clinic-provisioning-one-time-invitations.md) (Accepted). The invitee has no
+session, so the clinic is not known yet: the whole transition runs inside one `SECURITY DEFINER`
+function, `accept_invitation(p_token_hash, p_password_hash)` (`db/migrations/0016_invitations.sql`),
+the third pre-tenant-context path beside ADR-0012's two lookup functions.
+
+The application first validates the password (12–128 characters, no composition rules), hashes it
+with the existing Argon2id `hashPassword`, and computes `SHA-256` of the raw token. Only those two
+hashes reach the database; neither the raw token nor the password ever does. It then calls the
+function in its own short transaction, outside `withTenantContext`:
 
 ```text
-POST /api/staff/invitations/:id/accept { token, password }
-BEGIN;
-  1. SELECT invitations WHERE id = :id AND status = 'pending' FOR UPDATE;
-     -- 0 rows -> 409 (already accepted, expired, or wrong token)
-  2. IF expires_at < now(): UPDATE status = 'expired' WHERE id = :id; COMMIT; return 409.
-  3. INSERT INTO staff_members (clinic_id, email, role, password_hash, status)
-     VALUES (invitation.clinic_id, invitation.email, invitation.role, hash(:password), 'active');
-  4. UPDATE invitations SET status = 'accepted', accepted_at = now() WHERE id = :id;
-COMMIT;
+accept_invitation(token_hash, argon2id_hash)
+  0. Refuse a password hash not starting with $argon2id$ (raises: a caller bug, not a user error).
+     A token hash that is not 64 lowercase hex characters -> 'invalid', no table access.
+  1. SELECT ... FROM invitations WHERE token_hash = $1 AND status = 'pending' FOR UPDATE;
+     -- 0 rows -> 'invalid' (unknown, already accepted or already expired: indistinguishable)
+  2. IF expires_at <= now(): UPDATE status = 'expired'; return 'invalid'.
+     -- returned, not raised, so the caller's commit keeps the expired status
+  3. set app.current_clinic_id = invitation.clinic_id;
+     INSERT INTO staff_members (id, clinic_id, email, password_hash, role, status)
+     VALUES (gen_random_uuid(), invitation.clinic_id, invitation.email, $2, invitation.role, 'active');
+     -- staff_members_email_key violation -> 'email_taken', invitation stays pending
+     clear app.current_clinic_id
+  4. UPDATE invitations SET status = 'accepted', accepted_at = now();
+  -> 'accepted', staff_id, clinic_id, role
 ```
 
-Steps 3–4 in one transaction is what makes "an Invitation can be Accepted at most once" hold under
-concurrent double-submission of the same accept request: the `FOR UPDATE` row lock in step 1 plus
-re-checking `status = 'pending'` in the same `WHERE` means a second concurrent request for the same
-invitation blocks until the first transaction commits, then finds zero matching rows and returns
-`409` — rather than both requests independently deciding the invitation was still Pending and both
-creating a StaffMember.
+- **Single use under concurrency.** The `FOR UPDATE` lock in step 1 makes a second concurrent
+  acceptance of the same token wait; once the first commits, PostgreSQL re-checks
+  `status = 'pending'`, finds no row, and the second gets `invalid`. Exactly one staff member is
+  created. Two invitations for the same email at different clinics accepted at once are settled by
+  `staff_members_email_key`: one `accepted`, one `email_taken`.
+- **Isolation.** Clinic, email and role come only from the invitation row. The staff row is
+  written under the invitation's own tenant context, so `staff_members`' ordinary
+  `tenant_isolation` `WITH CHECK` still applies; there is no bypass policy on `staff_members`.
+- **Boundary.** Owned by `invitation_acceptor` (`NOLOGIN NOSUPERUSER NOBYPASSRLS`): column-scoped
+  privileges only, row access through two role-scoped policies on `invitations` only, `plpgsql`,
+  static SQL, pinned `search_path`, `EXECUTE` revoked from `PUBLIC` and granted to `app_user`. It
+  never returns the email, the token hash or the password hash. ADR-0012's functions and the
+  `auth_bootstrap` role are unchanged.
+- **After acceptance** the invitee signs in through the normal sign-in flow; acceptance creates no
+  session. The HTTP route and page that call this function are a later slice; their contract is
+  documented in [`03-api-contracts.md`](./03-api-contracts.md) when they are built.
 
 ## Role enforcement, at two layers
 

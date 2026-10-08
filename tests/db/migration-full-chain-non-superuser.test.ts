@@ -41,18 +41,21 @@ const MIGRATION_FILES = readdirSync(MIGRATIONS_DIR)
 
 /**
  * Swaps every reference to the cluster-wide roles the migrations manage (app_user, auth_bootstrap,
- * and clinic_settings_writer from 0015 / ADR-0022) for throwaway, per-test role names.
+ * clinic_settings_writer from 0015 / ADR-0022, and invitation_acceptor from 0016 / ADR-0023) for
+ * throwaway, per-test role names.
  */
 function roleSubstitutedSql(
   sql: string,
   appUserName: string,
   authBootstrapName: string,
   clinicSettingsWriterName: string,
+  invitationAcceptorName: string,
 ): string {
   return sql
     .replaceAll('app_user', appUserName)
     .replaceAll('auth_bootstrap', authBootstrapName)
-    .replaceAll('clinic_settings_writer', clinicSettingsWriterName);
+    .replaceAll('clinic_settings_writer', clinicSettingsWriterName)
+    .replaceAll('invitation_acceptor', invitationAcceptorName);
 }
 
 function withDatabaseName(connectionString: string, database: string): string {
@@ -76,6 +79,7 @@ interface Scratch {
   appUserName: string;
   authBootstrapName: string;
   clinicSettingsWriterName: string;
+  invitationAcceptorName: string;
 }
 
 /**
@@ -94,6 +98,7 @@ async function createScratchOwner(admin: Client): Promise<Scratch> {
   const appUserName = `test_app_user_${suffix}`;
   const authBootstrapName = `test_auth_bootstrap_${suffix}`;
   const clinicSettingsWriterName = `test_csw_${suffix}`; // short: role names truncate at 63 bytes
+  const invitationAcceptorName = `test_ia_${suffix}`;
 
   await admin.query(
     `CREATE ROLE ${ownerRoleName} LOGIN PASSWORD '${ownerPassword}' NOSUPERUSER NOBYPASSRLS CREATEROLE`,
@@ -125,6 +130,7 @@ async function createScratchOwner(admin: Client): Promise<Scratch> {
     appUserName,
     authBootstrapName,
     clinicSettingsWriterName,
+    invitationAcceptorName,
   };
 }
 
@@ -134,6 +140,7 @@ async function dropScratchOwner(admin: Client, scratch: Scratch): Promise<void> 
   await admin.query(`DROP ROLE IF EXISTS ${scratch.appUserName}`);
   await admin.query(`DROP ROLE IF EXISTS ${scratch.authBootstrapName}`);
   await admin.query(`DROP ROLE IF EXISTS ${scratch.clinicSettingsWriterName}`);
+  await admin.query(`DROP ROLE IF EXISTS ${scratch.invitationAcceptorName}`);
 }
 
 describe('full migration chain (0001-0008) against a non-superuser, non-BYPASSRLS owner role', () => {
@@ -162,6 +169,7 @@ describe('full migration chain (0001-0008) against a non-superuser, non-BYPASSRL
           scratch.appUserName,
           scratch.authBootstrapName,
           scratch.clinicSettingsWriterName,
+          scratch.invitationAcceptorName,
         );
         await expect(
           ownerClient.query(substituted),
@@ -171,7 +179,14 @@ describe('full migration chain (0001-0008) against a non-superuser, non-BYPASSRL
 
       const roleRows = await admin.query(
         'SELECT rolname, rolsuper, rolbypassrls, rolcanlogin FROM pg_roles WHERE rolname = ANY($1) ORDER BY rolname',
-        [[scratch.appUserName, scratch.authBootstrapName, scratch.clinicSettingsWriterName]],
+        [
+          [
+            scratch.appUserName,
+            scratch.authBootstrapName,
+            scratch.clinicSettingsWriterName,
+            scratch.invitationAcceptorName,
+          ],
+        ],
       );
       expect(roleRows.rows).toEqual([
         {
@@ -188,6 +203,12 @@ describe('full migration chain (0001-0008) against a non-superuser, non-BYPASSRL
         },
         {
           rolname: scratch.clinicSettingsWriterName,
+          rolsuper: false,
+          rolbypassrls: false,
+          rolcanlogin: false,
+        },
+        {
+          rolname: scratch.invitationAcceptorName,
           rolsuper: false,
           rolbypassrls: false,
           rolcanlogin: false,
@@ -213,6 +234,7 @@ describe('full migration chain (0001-0008) against a non-superuser, non-BYPASSRL
             scratch.appUserName,
             scratch.authBootstrapName,
             scratch.clinicSettingsWriterName,
+            scratch.invitationAcceptorName,
           ),
         );
       }

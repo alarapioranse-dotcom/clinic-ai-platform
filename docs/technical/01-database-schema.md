@@ -154,26 +154,40 @@ CREATE POLICY tenant_isolation ON staff_members
 
 ## `invitations`
 
+Implemented by `db/migrations/0016_invitations.sql`, per
+[ADR-0023](../adr/0023-clinic-provisioning-one-time-invitations.md) (Accepted). ADR-0023 corrects
+the earlier design of this table in two places: it adds `token_hash` (the earlier design stored no
+secret, so an invitation id alone could have been accepted) and makes `invited_by` nullable for an
+operator-provisioned first owner.
+
 ```sql
 CREATE TABLE invitations (
-  id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  clinic_id        uuid NOT NULL REFERENCES clinics(id),
-  email            text NOT NULL,
-  role             text NOT NULL
-                     CHECK (role IN ('owner', 'admin', 'practitioner', 'receptionist')),
-  status           text NOT NULL DEFAULT 'pending'
-                     CHECK (status IN ('pending', 'accepted', 'expired')),
-  invited_by       uuid NOT NULL REFERENCES staff_members(id),
-  expires_at       timestamptz NOT NULL,
-  accepted_at      timestamptz,
-  created_at       timestamptz NOT NULL DEFAULT now(),
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  clinic_id    uuid NOT NULL REFERENCES clinics(id),
+  email        text NOT NULL,
+  role         text NOT NULL
+                 CHECK (role IN ('owner', 'admin', 'practitioner', 'receptionist')),
+  status       text NOT NULL DEFAULT 'pending'
+                 CHECK (status IN ('pending', 'accepted', 'expired')),
+  token_hash   text NOT NULL,          -- SHA-256 hex of the raw token; the raw token is never stored
+  invited_by   uuid,                   -- NULL only for an operator-provisioned owner invitation
+  expires_at   timestamptz NOT NULL DEFAULT now() + interval '72 hours',
+  accepted_at  timestamptz,
+  created_at   timestamptz NOT NULL DEFAULT now(),
 
+  CONSTRAINT invitations_token_hash_key UNIQUE (token_hash),
+  CONSTRAINT invitation_token_hash_is_sha256_hex CHECK (token_hash ~ '^[0-9a-f]{64}$'),
+  CONSTRAINT invitation_email_is_normalized CHECK (email = lower(btrim(email))),
+  CONSTRAINT invitation_expires_72h_after_creation
+    CHECK (expires_at = created_at + interval '72 hours'),
   CONSTRAINT invitation_accepted_at_matches_status
-    CHECK (accepted_at IS NULL OR status = 'accepted')
+    CHECK ((status = 'accepted') = (accepted_at IS NOT NULL)),
+  CONSTRAINT invitation_inviter_required_unless_owner
+    CHECK (invited_by IS NOT NULL OR role = 'owner'),
+  CONSTRAINT invitations_invited_by_same_clinic_fkey
+    FOREIGN KEY (invited_by, clinic_id) REFERENCES staff_members (id, clinic_id)
 );
 
--- At most one Pending invitation per (clinic, email) at a time — B: "an email already invited...
--- cannot receive a second Pending Invitation."
 CREATE UNIQUE INDEX invitations_one_pending_per_email
   ON invitations (clinic_id, email)
   WHERE status = 'pending';
@@ -185,20 +199,28 @@ CREATE POLICY tenant_isolation ON invitations
   WITH CHECK (clinic_id = current_setting('app.current_clinic_id', true)::uuid);
 ```
 
-- The partial unique index is the enforcement mechanism for B's "single-use... cannot be Accepted
-  twice; cannot be Accepted once Expired" combined with the "no duplicate Pending invite" rule: a
-  new Pending row for the same (clinic, email) can only be inserted once the prior one has moved to
-  `accepted` or `expired`, because only `pending` rows compete for the index.
-  Accept/expire transitions themselves (`pending → accepted`, `pending → expired`) are enforced at
-  the API layer by only ever updating a row matched with `WHERE status = 'pending'` — an attempt to
-  accept an already-`expired` or already-`accepted` row simply matches zero rows and the API
-  returns a conflict, per [`03-api-contracts.md`](./03-api-contracts.md).
-- "An email already... a StaffMember of the same Clinic cannot receive a second Pending
-  Invitation" (the other half of the same business rule) is enforced at the API layer by checking
-  `staff_members` for an existing active row with that email before inserting — not a schema
-  constraint, since `invitations` and `staff_members` are separate aggregates by design (B,
-  Invitation entity) and a cross-table `UNIQUE` constraint can't express "unique across two
-  different tables."
+- **Token.** 32 random bytes, base64url in the link; only `SHA-256(raw token)` as lowercase hex is
+  stored. The raw token is never stored, logged or returned after creation.
+- **Email.** Stored trimmed and lowercase (`invitation_email_is_normalized`), so the account an
+  invitation creates is found by sign-in's exact-match email lookup, and case variants of one
+  address cannot become two pending invitations. Callers normalise before inserting; the
+  constraint rejects anything else. Sign-in itself is unchanged.
+- **Lifecycle.** `pending → accepted` or `pending → expired`, at most once. A `BEFORE UPDATE`
+  trigger (`invitations_guard_update`) refuses any update to a row that is no longer `pending`
+  and any change to `id`, `clinic_id`, `email`, `role`, `token_hash`, `invited_by`,
+  `expires_at` or `created_at`, for every role including the table owner.
+- **Expiry.** Exactly 72 hours after creation, fixed by the database.
+- **One pending invitation per (clinic, email).** The partial unique index: a new pending row for
+  the same pair can only be inserted once the prior one has left `pending`.
+- **Already a staff member.** Whether the email already belongs to a staff member is checked when
+  an invitation is created (the provisioning script, and later the staff page), and again at
+  acceptance, where `staff_members_email_key` makes the acceptance fail with `email_taken` and the
+  invitation stays pending. A cross-table `UNIQUE` constraint cannot express this rule.
+- **Privileges.** `app_user` holds no privilege on this table. Acceptance goes only through
+  `accept_invitation` (see [`04-auth-implementation.md`](./04-auth-implementation.md)); its
+  owner role, `invitation_acceptor`, has column-scoped `SELECT` and `UPDATE (status,
+accepted_at)` here and two role-scoped policies (`invitation_acceptor_select`,
+  `invitation_acceptor_update`) on this table only. The privileges staff invitations need (item 3) are granted by their own later migration.
 
 ## `patients`
 

@@ -62,7 +62,6 @@ export function AcceptInvitationForm() {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const password = String(form.get('password') ?? '');
-    const confirmation = String(form.get('confirmPassword') ?? '');
     const token = tokenRef.current;
 
     if (!token) {
@@ -72,10 +71,6 @@ export function AcceptInvitationForm() {
     const length = codePointLength(password);
     if (length < INVITE_PASSWORD_MIN_LENGTH || length > INVITE_PASSWORD_MAX_LENGTH) {
       setState({ status: 'ready', message: PASSWORD_LENGTH_MESSAGE });
-      return;
-    }
-    if (password !== confirmation) {
-      setState({ status: 'ready', message: 'كلمتا المرور غير متطابقتين.' });
       return;
     }
 
@@ -179,19 +174,6 @@ export function AcceptInvitationForm() {
         <p className="text-muted mt-1 text-xs">
           من {INVITE_PASSWORD_MIN_LENGTH} إلى {INVITE_PASSWORD_MAX_LENGTH} حرفًا. لا شروط أخرى.
         </p>
-      </div>
-      <div>
-        <label htmlFor="confirmPassword" className="mb-1 block text-sm font-medium">
-          تأكيد كلمة المرور
-        </label>
-        <Input
-          id="confirmPassword"
-          name="confirmPassword"
-          type="password"
-          autoComplete="new-password"
-          required
-          disabled={submitting}
-        />
       </div>
       {message && (
         <p role="alert" className="text-sm font-medium text-red-700">

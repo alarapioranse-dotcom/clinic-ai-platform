@@ -8,7 +8,7 @@ import { acceptInvitation } from '@/features/invitations';
 import { createTestClinic, createTestInvitation, createTestStaffMember } from '../fixtures';
 
 /**
- * db/migrations/0017_staff_invitations_grants.sql (item 3; ADR-0023 decision 7;
+ * db/migrations/0017_staff_invitations.sql (item 3; ADR-0023 decision 7;
  * Owner decision S2): app_user may read every invitations column except
  * token_hash, insert the five columns a new invitation sets, and change only
  * `status` — which, with 0016's trigger and constraints, can only mean
@@ -249,6 +249,22 @@ describe('app_user privileges on invitations (0017)', () => {
     );
     expect(result.rowCount).toBe(0);
     expect(await statusOf(theirs.id)).toBe('pending');
+  });
+
+  it('cannot create an owner invitation with an inviter (S1 in the database)', async () => {
+    const clinic = await createTestClinic('GrantNoOwner');
+    const inviter = await createTestStaffMember(clinic.id, 'grant-no-owner', { role: 'owner' });
+    await expect(
+      withTenantContext(clinic.id, (client) =>
+        client.query(
+          `INSERT INTO invitations (clinic_id, email, role, token_hash, invited_by)
+           VALUES ($1, $2, 'owner', $3, $4)`,
+          [clinic.id, email('owner-by-staff'), newTokenHash().hash, inviter.id],
+        ),
+      ),
+    ).rejects.toThrow(/invitation_owner_never_invited_by_staff/);
+    // The operator-provisioned shape (owner, no inviter) is still allowed.
+    await expect(createTestInvitation(clinic.id, { role: 'owner' })).resolves.toBeDefined();
   });
 
   it('cannot delete an invitation', async () => {

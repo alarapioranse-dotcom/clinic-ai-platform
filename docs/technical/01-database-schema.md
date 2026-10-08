@@ -220,13 +220,16 @@ CREATE POLICY tenant_isolation ON invitations
   [`04-auth-implementation.md`](./04-auth-implementation.md)); its owner role,
   `invitation_acceptor`, has column-scoped `SELECT` and `UPDATE (status, accepted_at)` here and two
   role-scoped policies (`invitation_acceptor_select`, `invitation_acceptor_update`) on this table
-  only. For staff invitations (item 3), `db/migrations/0017_staff_invitations_grants.sql` gives
+  only. For staff invitations (item 3), `db/migrations/0017_staff_invitations.sql` gives
   `app_user` column-scoped privileges only: `SELECT` on every column **except `token_hash`**,
   `INSERT (clinic_id, email, role, token_hash, invited_by)`, and `UPDATE (status)`. With the trigger
   and the `accepted_at` constraint above, `UPDATE (status)` can only move a pending invitation to
   `expired` (cancelling it, or retiring a timed-out one before a new invitation for the same
   email). `app_user` has no table-wide privilege and no `DELETE`. Which roles may invite which is
-  enforced in the application.
+  enforced in the application; 0017 also adds `invitation_owner_never_invited_by_staff`
+  (`role <> 'owner' OR invited_by IS NULL`), so with `invitation_inviter_required_unless_owner` an
+  owner invitation exists only without an inviter (operator-provisioned) and no staff member can
+  ever invite an owner.
 
 ## `patients`
 

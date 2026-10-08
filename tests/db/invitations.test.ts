@@ -410,8 +410,13 @@ describe('invitations table (0016)', () => {
   });
 });
 
-describe('app_user and invitations (E3)', () => {
-  it('holds no privilege on the invitations table at all', async () => {
+describe('app_user and invitations (E3, as narrowed by 0017)', () => {
+  // 0016 gave app_user nothing on this table (E3). Migration 0017 (Owner
+  // decision S2) adds column-level SELECT/INSERT/UPDATE(status) for staff
+  // invitations; tests/db/staff-invitations-grants.test.ts covers them.
+  // What stays true: no table-wide privilege, no DELETE, and token_hash
+  // unreadable — so SELECT * is still denied below.
+  it('holds no table-wide privilege and no DELETE on the invitations table', async () => {
     await withAppUser(async (client) => {
       const { rows } = await client.query(
         `SELECT has_table_privilege('invitations', 'SELECT') AS sel,
@@ -426,8 +431,8 @@ describe('app_user and invitations (E3)', () => {
         ins: false,
         upd: false,
         del: false,
-        col_sel: false,
-        col_upd: false,
+        col_sel: true,
+        col_upd: true,
       });
     });
   });

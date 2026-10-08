@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { Client } from 'pg';
 import { withTenantContext } from '@/lib/db';
 import { getDatabaseUrl } from '@/lib/env';
@@ -217,6 +217,61 @@ export async function setClinicWorkingHours(
       JSON.stringify(workingHours),
       clinicId,
     ]);
+  } finally {
+    await admin.end();
+  }
+}
+
+/**
+ * Test-only invitation (ADR-0023, migration 0016). Inserted over the
+ * owner/admin connection under the clinic's own tenant context, because
+ * app_user holds no privilege on `invitations` (Owner decision E3). Returns
+ * the raw token, which is never stored: only its SHA-256 hex is.
+ * `createdHoursAgo: 73` yields an already-expired invitation.
+ */
+export interface TestInvitation {
+  id: string;
+  clinicId: string;
+  email: string;
+  role: 'owner' | 'admin' | 'practitioner' | 'receptionist';
+  rawToken: string;
+}
+
+export interface CreateTestInvitationOptions {
+  email?: string;
+  role?: TestInvitation['role'];
+  invitedBy?: string;
+  createdHoursAgo?: number;
+}
+
+export async function createTestInvitation(
+  clinicId: string,
+  options: CreateTestInvitationOptions = {},
+): Promise<TestInvitation> {
+  const rawToken = randomBytes(32).toString('base64url');
+  const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+  const email = options.email ?? `invitee-${randomUUID().slice(0, 8)}@example.test`;
+  const role = options.role ?? 'owner';
+  const createdHoursAgo = options.createdHoursAgo ?? 0;
+
+  const admin = new Client({ connectionString: getDatabaseUrl() });
+  await admin.connect();
+  try {
+    await admin.query('BEGIN');
+    await admin.query("SELECT set_config('app.current_clinic_id', $1, true)", [clinicId]);
+    const { rows } = await admin.query<{ id: string }>(
+      `INSERT INTO invitations (clinic_id, email, role, token_hash, invited_by, created_at, expires_at)
+       VALUES ($1, $2, $3, $4, $5,
+               now() - make_interval(hours => $6::int),
+               now() - make_interval(hours => $6::int) + interval '72 hours')
+       RETURNING id`,
+      [clinicId, email, role, tokenHash, options.invitedBy ?? null, createdHoursAgo],
+    );
+    await admin.query('COMMIT');
+    return { id: rows[0]!.id, clinicId, email, role, rawToken };
+  } catch (err) {
+    await admin.query('ROLLBACK').catch(() => {});
+    throw err;
   } finally {
     await admin.end();
   }

@@ -21,6 +21,13 @@ import {
 } from './repository';
 
 export { hashPassword };
+export {
+  validateNewPassword,
+  passwordLength,
+  InvalidNewPasswordError,
+  NEW_PASSWORD_MIN_LENGTH,
+  NEW_PASSWORD_MAX_LENGTH,
+} from './password-policy';
 
 /** Cookie name pinned per ADR-0012 (Decision 6, human-approved). */
 export const SESSION_COOKIE_NAME = 'session';

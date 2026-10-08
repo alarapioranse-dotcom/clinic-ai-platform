@@ -164,6 +164,49 @@ export async function lookupSessionByTokenHashForAuth(
   }
 }
 
+/**
+ * ADR-0023: the invitation-acceptance bootstrap. Calls exactly one
+ * `SECURITY DEFINER` function, `accept_invitation`
+ * (db/migrations/0016_invitations.sql), which resolves a pending invitation
+ * by token hash before any tenant context exists and creates its staff
+ * member. Same fixed-shape discipline as the two ADR-0012 helpers above: one
+ * named function, typed scalar arguments, bind parameters only.
+ *
+ * Callers pass only `SHA-256(raw token)` as lowercase hex and an Argon2id
+ * hash, never the raw token or the raw password. A single statement on its
+ * own connection, so the function's writes (including marking an expired
+ * invitation `expired`) commit atomically, and a raised error commits
+ * nothing. No tenant context is set; the function sets and clears its own.
+ */
+export type AcceptInvitationOutcome = 'accepted' | 'invalid' | 'email_taken';
+
+export interface AcceptInvitationRow {
+  outcome: AcceptInvitationOutcome;
+  staff_id: string | null;
+  clinic_id: string | null;
+  role: string | null;
+}
+
+export async function acceptInvitationInDatabase(
+  tokenHash: string,
+  passwordHash: string,
+): Promise<AcceptInvitationRow> {
+  const client = await getPool().connect();
+  try {
+    const { rows } = await client.query<AcceptInvitationRow>(
+      'SELECT * FROM accept_invitation($1, $2)',
+      [tokenHash, passwordHash],
+    );
+    const row = rows[0];
+    if (!row) {
+      throw new Error('accept_invitation returned no row');
+    }
+    return row;
+  } finally {
+    client.release();
+  }
+}
+
 export async function closePool(): Promise<void> {
   await pool?.end();
   pool = undefined;

@@ -1,7 +1,7 @@
 -- 0018 — SECURITY DEFINER search_path hardening (defense in depth).
 --
 -- FINDING (reproduced locally on PostgreSQL 16, synthetic data only):
--- the four SECURITY DEFINER functions created in 0006/0007 (auth lookups),
+-- the four SECURITY DEFINER functions created in 0007 (the two auth lookups),
 -- 0015 (clinic settings) and 0016 (accept_invitation) pinned
 -- `SET search_path = public, pg_catalog`. That pins the *named* schemas, but
 -- it does NOT remove the temporary schema from the search order: when
@@ -30,8 +30,8 @@
 -- secured" section, describe `public, pg_catalog` as closing the
 -- search-path-hijack class; that description is incomplete. Accepted
 -- migrations and ADRs are immutable (project charter §10); this migration
--- applies the correction, and the decision-record update is a separate,
--- Owner-approved change.
+-- applies the correction, and the decision is recorded in
+-- docs/adr/0024-security-definer-search-path-and-name-qualification.md.
 --
 -- FIX (applied together):
 --   1. search_path is now `pg_catalog, public, pg_temp`: built-ins are

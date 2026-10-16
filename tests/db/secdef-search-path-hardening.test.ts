@@ -13,10 +13,13 @@ import { hashPassword } from '@/features/auth/password';
 /**
  * Database coverage for db/migrations/0018_secdef_search_path_hardening.sql.
  *
- * The four SECURITY DEFINER functions (0006/0007 auth lookups, 0015 clinic
+ * Decision record: docs/adr/0024-security-definer-search-path-and-name-qualification.md.
+ *
+ * The four SECURITY DEFINER functions (0007 auth lookups, 0015 clinic
  * settings, 0016 accept_invitation) pinned `search_path = public, pg_catalog`:
  *   - pg_temp was not listed, so PostgreSQL searched it FIRST for relations
- *     and an app_user temp table could shadow an unqualified public table;
+ *     and data types, and an app_user temp table or type could shadow an
+ *     unqualified name;
  *   - public came before pg_catalog, and the owner roles hold CREATE on
  *     public, so an object in public could shadow a built-in function,
  *     operator or type.
@@ -391,6 +394,43 @@ describe('0018 SECURITY DEFINER search_path hardening', () => {
       ),
     );
     expect(staff.rows[0]!.n).toBe('0');
+  });
+
+  it('temporary types named uuid and text cannot change any of the four functions', async () => {
+    const clinic = await createTestClinic('SecdefTempType');
+    const staff = await createTestStaffMember(clinic.id, 'SecdefTempType', { role: 'admin' });
+    const sessionHash = newTokenHash();
+    await insertSession(staff.id, clinic.id, sessionHash);
+    const passwordHash = await hashPassword('Temp-Type-Password-1!');
+
+    await asAppUser(async (client) => {
+      // Always-failing domains. Without pg_temp named last, PostgreSQL searches
+      // the temporary schema first for type names too, so a body's `uuid` or
+      // `text` would resolve here and every call would raise a check violation.
+      await client.query('CREATE DOMAIN pg_temp.uuid AS pg_catalog.text CHECK (false)');
+      await client.query('CREATE DOMAIN pg_temp.text AS pg_catalog.text CHECK (false)');
+
+      const lookup = await client.query('SELECT staff_id FROM auth_lookup_staff_by_email($1)', [
+        staff.email,
+      ]);
+      expect(lookup.rows).toEqual([{ staff_id: staff.id }]);
+
+      const session = await client.query(
+        'SELECT staff_id FROM auth_lookup_session_by_token_hash($1)',
+        [sessionHash],
+      );
+      expect(session.rows).toEqual([{ staff_id: staff.id }]);
+
+      const invite = await client.query<{ outcome: string }>(
+        'SELECT outcome FROM accept_invitation($1, $2)',
+        [newTokenHash(), passwordHash],
+      );
+      expect(invite.rows[0]!.outcome).toBe('invalid');
+
+      await setClinicTimezoneAsAppUser(client, clinic.id, 'Europe/Lisbon');
+    });
+
+    expect(await clinicTimezone(clinic.id)).toBe('Europe/Lisbon');
   });
 
   // ── 3. built-in shadowing from public (rolled back, superuser) ────────────

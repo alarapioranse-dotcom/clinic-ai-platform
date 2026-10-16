@@ -269,7 +269,10 @@ describe('set_clinic_settings (db/migrations/0015, ADR-0022)', () => {
       expect(rows[0]).toEqual({
         prosecdef: true,
         lang: 'plpgsql',
-        proconfig: ['search_path=public, pg_catalog'],
+        // 0018: pg_catalog first (built-ins cannot be shadowed from public),
+        // pg_temp last (temp objects cannot shadow anything); table and function
+        // references in the body are also schema-qualified.
+        proconfig: ['search_path=pg_catalog, public, pg_temp'],
         owner: 'clinic_settings_writer',
       });
     } finally {

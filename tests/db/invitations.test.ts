@@ -696,7 +696,10 @@ describe('accept_invitation privilege boundary', () => {
           signature: 'accept_invitation(text,text)',
           prosecdef: true,
           lang: 'plpgsql',
-          proconfig: ['search_path=public, pg_catalog'],
+          // 0018: pg_catalog first (built-ins cannot be shadowed from public),
+          // pg_temp last (temp objects cannot shadow anything); table and function
+          // references in the body are also schema-qualified.
+          proconfig: ['search_path=pg_catalog, public, pg_temp'],
           owner: 'invitation_acceptor',
         },
       ]);

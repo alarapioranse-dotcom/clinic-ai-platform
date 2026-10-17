@@ -29,6 +29,7 @@ decisions don't need one.
 | [0021](./0021-bounded-prefix-read.md)                                  | Bounded prefix read for authoritative file-type validation                          | Accepted |
 | [0022](./0022-clinic-settings-writes-through-tenant-bound-function.md) | Clinic settings are written only through a tenant-bound database function           | Accepted |
 | [0023](./0023-clinic-provisioning-one-time-invitations.md)             | Clinic provisioning and one-time staff invitations                                  | Accepted |
+| [0024](./0024-security-definer-search-path-and-name-qualification.md)  | SECURITY DEFINER functions pin `pg_catalog, public, pg_temp` and qualify every name | Accepted |
 
 0010 is intentionally unassigned — reserved for the audit-log erasure strategy named as a follow-up
 in [ADR-0009](./0009-data-residency.md), not yet written.

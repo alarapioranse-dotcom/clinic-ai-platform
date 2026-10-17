@@ -5,6 +5,11 @@
 Accepted — 2026-09-03. Approved by the owner in conversation (P2-A design review), applied in this
 pull request.
 
+Its section "How search_path is secured" is superseded by
+[ADR-0024](./0024-security-definer-search-path-and-name-qualification.md) (accepted 2026-10-17 in
+[PR #93](https://github.com/alarapioranse-dotcom/clinic-ai-platform/pull/93)); the rest of this record
+stands.
+
 ## Date
 
 2026-09-03

@@ -586,17 +586,18 @@ describe('provisioning as a non-superuser owner role (FORCE RLS applies)', () =>
         expect(blocked.rows).toHaveLength(0);
       };
 
-      // Production shape: migrations made this role an inheriting member of the
-      // bootstrap roles, so their role-scoped policies apply to it as well.
+      // Since 0019 (ADR-0025) the full chain already leaves this role a
+      // non-inheriting member of the bootstrap roles, so this first run is the
+      // strict shape too.
       const [, authBootstrapRole] = substitutions[1]!;
       const [, acceptorRole] = substitutions[3]!;
       await refuseTakenEmail();
 
-      // Strict shape: without that inheritance FORCE RLS fully applies — with no
-      // context the role sees no staff at all — and the per-clinic context
-      // check (P4) must still find the email.
-      // The inheriting grant is the one the migrations made (grantor: this role
-      // itself), so this role is the one that can switch its inheritance off.
+      // Strict shape, asserted explicitly: without inheritance FORCE RLS fully
+      // applies — with no context the role sees no staff at all — and the
+      // per-clinic context check (P4) must still find the email. Re-issuing the
+      // non-inheriting grant (grantor: this role itself) is a no-op after 0019;
+      // it keeps this case meaningful if the chain ever stops applying 0019.
       await ownerClient.query(`GRANT ${authBootstrapRole} TO CURRENT_USER WITH INHERIT FALSE`);
       await ownerClient.query(`GRANT ${acceptorRole} TO CURRENT_USER WITH INHERIT FALSE`);
       const strictClient = new Client({ connectionString: ownerUrl.toString() });

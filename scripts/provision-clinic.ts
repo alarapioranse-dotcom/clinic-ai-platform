@@ -25,10 +25,11 @@
  * A note on Row Level Security: on the managed database the owner role has
  * neither SUPERUSER nor BYPASSRLS, so FORCE ROW LEVEL SECURITY applies to it,
  * and writing `invitations` needs the clinic's tenant context. Reads are
- * subtler: migrations 0007 and 0016 make the migrating role a member (with
+ * subtler: migrations 0007 and 0016 made the migrating role a member (with
  * inheritance) of auth_bootstrap and invitation_acceptor, whose role-scoped
- * policies then also apply to it, so today it can read every clinic's staff
- * and invitations. The code relies on neither behaviour: the global "is this
+ * policies then also applied to it, so it could read every clinic's staff
+ * and invitations; 0019 (ADR-0025) switches that inheritance off. The code
+ * relies on neither behaviour: the global "is this
  * email already a staff member?" check (ADR-0023: staff email is globally
  * unique) visits each clinic under its own context (Owner decision P4), and
  * every other query filters by clinic_id explicitly. Both shapes are tested.

@@ -76,9 +76,29 @@ bypass. The comparison method detects a one-field change.
 **What it does not prove:** that Render's PITR behaves the same; that Render's recovery instance
 keeps the roles and memberships Render manages; restore time; anything at production volume.
 
-**Not yet done in Phase 1:** a run of restore-check v10.3 (below) against the source and the
-restored copy. The simple comparison script above is a rehearsal aid only and is not a substitute
-for it.
+The simple comparison script above is a rehearsal aid only. The reviewed check is restore-check
+v10.3; its results on the same rehearsal are below.
+
+### restore-check v10.3 on the rehearsal (2026-10-19)
+
+Run with psql 16.15 against PostgreSQL 16.15, as the owner role, on the source cluster and on a
+fresh physical copy of it, both holding the same synthetic data as above.
+
+- **Phase 1** (catalog only, no application row read): exit 0 on both. The 575-line outputs are
+  byte-identical. Approval token
+  `dd8a33efb05854e5759977249eef4d476a769c732c2f2278388e28e310032efa`. Section 18 classified all 8
+  RLS tables as `isolated` (`cross_clinic=0`, `not_proven=0`) and predicted `PASS` as the best
+  phase 2 result. All four SECURITY DEFINER functions show
+  `search_path=pg_catalog, public, pg_temp`. v10.3 was baselined on migrations 0001-0018; it did not
+  stop on 0019.
+- **Phase 2** (counts and digests only), run after the Owner reviewed the token: exit 0 on both,
+  `RESULT_CODE: PASS`, every one of the 8 RLS tables isolated in both clinic contexts with 0 foreign
+  rows. The 123-line outputs are byte-identical.
+- **Negative control:** after one synthetic patient's `display_name` was changed in the restored
+  copy, phase 2 on that copy differed from the source in exactly one line, the clinic B `patients`
+  digest.
+- Both clusters, the drill database, its roles and the `pg_dump` files were deleted afterwards. Only
+  the count and digest outputs were kept, outside the repository.
 
 ## restore-check
 
@@ -87,7 +107,8 @@ repository (Owner ruling, 2026-10-19) and referenced here by version only:
 
 - Version: v10.3, frozen as a read-only local baseline on 2026-10-17.
 - Archive: `restore-check-v10.3-baseline.zip`, held by the Owner.
-- sha256: begins `48f70aaf`; the full value is recorded here once the archive is verified against it.
+- Archive sha256: `48f70aaf4c772e9b8b39d429cf1dd15526ca8ea9b1a7fb531c7945e118b39efb` (verified
+  2026-10-19; all 10 files inside also match the archive's own `MANIFEST-v10.3.sha256`).
 - Not approved for use against production, Render or a PITR copy until the Owner approves Phase 3.
   A pass is not evidence that a backup is complete; it is evidence that the restored copy matches
   the source at the time both were read.
@@ -140,4 +161,3 @@ the synthetic demo clinic (pilot readiness item) to exist first.
 - Render dashboard exports under FORCE RLS: untested (Phase 2).
 - Recovery instance region and cost: unconfirmed (Phase 2).
 - `production-rebuild-runbook.md` is out of date (see "Why this exists").
-- restore-check v10.3 has not yet been run in the Phase 1 rehearsal.

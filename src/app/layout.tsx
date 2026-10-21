@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 
+import { EnvironmentNotice } from '@/components/EnvironmentNotice';
 import { siteConfig } from '@/config/site';
 
 import './globals.css';
@@ -23,7 +24,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
         />
       </head>
-      <body className="bg-paper text-ink font-body antialiased">{children}</body>
+      <body className="bg-paper text-ink font-body antialiased">
+        <EnvironmentNotice />
+        {children}
+      </body>
     </html>
   );
 }

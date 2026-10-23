@@ -515,6 +515,7 @@ describe('provisioning as a non-superuser owner role (FORCE RLS applies)', () =>
       ['auth_bootstrap', `test_pab_${suffix}`],
       ['clinic_settings_writer', `test_pcs_${suffix}`],
       ['invitation_acceptor', `test_pia_${suffix}`],
+      ['knowledge_document_processor', `test_pkdp_${suffix}`],
     ];
     admin = new Client({ connectionString: getDatabaseUrl() });
     await admin.connect();

@@ -78,6 +78,31 @@ const EXPECTED_FUNCTIONS = [
   },
 ] as const;
 
+/** SECURITY DEFINER functions added after 0018 (0020, ADR-0026), reviewed and added here
+ * deliberately. They were created with the hardened configuration, so the same inventory
+ * assertions apply to them; their own coverage is tests/db/knowledge-document-chunks.test.ts. */
+const LATER_FUNCTIONS = [
+  {
+    signature: 'mark_knowledge_document_failed(uuid,text)',
+    owner: 'knowledge_document_processor',
+    acl: '{knowledge_document_processor=X/knowledge_document_processor,app_user=X/knowledge_document_processor}',
+    volatility: 'v',
+    result: 'void',
+  },
+  {
+    signature: 'store_knowledge_document_chunks(uuid,text,text,text,text[])',
+    owner: 'knowledge_document_processor',
+    acl: '{knowledge_document_processor=X/knowledge_document_processor,app_user=X/knowledge_document_processor}',
+    volatility: 'v',
+    result: 'integer',
+  },
+] as const;
+
+/** Every SECURITY DEFINER function in public on a fully migrated database, sorted by signature. */
+const ALL_SECDEF_FUNCTIONS = [...EXPECTED_FUNCTIONS, ...LATER_FUNCTIONS].sort((a, b) =>
+  a.signature.localeCompare(b.signature),
+);
+
 async function withClient<T>(url: string, fn: (client: Client) => Promise<T>): Promise<T> {
   const client = new Client({ connectionString: url });
   await client.connect();
@@ -203,7 +228,7 @@ describe('0018 SECURITY DEFINER search_path hardening', () => {
 
   // ── 1. configuration and privilege preservation ─────────────────────────
 
-  it('exactly the four SECURITY DEFINER functions in public pin pg_catalog, public, pg_temp', async () => {
+  it('exactly the reviewed SECURITY DEFINER functions in public pin pg_catalog, public, pg_temp', async () => {
     const rows = await withAdmin(async (admin) => {
       const { rows } = await admin.query<{ signature: string; cfg: string[] | null }>(
         `SELECT p.oid::regprocedure::text AS signature, p.proconfig AS cfg
@@ -213,9 +238,9 @@ describe('0018 SECURITY DEFINER search_path hardening', () => {
       );
       return rows;
     });
-    // A fifth SECURITY DEFINER function in public must be reviewed and added
-    // here deliberately.
-    expect(rows.map((r) => r.signature)).toEqual(EXPECTED_FUNCTIONS.map((f) => f.signature));
+    // Any further SECURITY DEFINER function in public must be reviewed and
+    // added to LATER_FUNCTIONS deliberately.
+    expect(rows.map((r) => r.signature)).toEqual(ALL_SECDEF_FUNCTIONS.map((f) => f.signature));
     for (const row of rows) {
       expect(row.cfg, `${row.signature} proconfig`).toEqual([SEARCH_PATH]);
     }
@@ -243,7 +268,7 @@ describe('0018 SECURITY DEFINER search_path hardening', () => {
       return rows;
     });
     expect(rows).toEqual(
-      EXPECTED_FUNCTIONS.map((f) => ({
+      ALL_SECDEF_FUNCTIONS.map((f) => ({
         ...f,
         secdef: true,
         lang: 'plpgsql',

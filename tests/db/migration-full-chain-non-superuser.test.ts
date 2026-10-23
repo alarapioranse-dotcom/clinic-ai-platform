@@ -41,8 +41,8 @@ const MIGRATION_FILES = readdirSync(MIGRATIONS_DIR)
 
 /**
  * Swaps every reference to the cluster-wide roles the migrations manage (app_user, auth_bootstrap,
- * clinic_settings_writer from 0015 / ADR-0022, and invitation_acceptor from 0016 / ADR-0023) for
- * throwaway, per-test role names.
+ * clinic_settings_writer from 0015 / ADR-0022, invitation_acceptor from 0016 / ADR-0023, and
+ * knowledge_document_processor from 0020 / ADR-0026) for throwaway, per-test role names.
  */
 function roleSubstitutedSql(
   sql: string,
@@ -50,12 +50,14 @@ function roleSubstitutedSql(
   authBootstrapName: string,
   clinicSettingsWriterName: string,
   invitationAcceptorName: string,
+  knowledgeDocumentProcessorName: string,
 ): string {
   return sql
     .replaceAll('app_user', appUserName)
     .replaceAll('auth_bootstrap', authBootstrapName)
     .replaceAll('clinic_settings_writer', clinicSettingsWriterName)
-    .replaceAll('invitation_acceptor', invitationAcceptorName);
+    .replaceAll('invitation_acceptor', invitationAcceptorName)
+    .replaceAll('knowledge_document_processor', knowledgeDocumentProcessorName);
 }
 
 function withDatabaseName(connectionString: string, database: string): string {
@@ -80,6 +82,7 @@ interface Scratch {
   authBootstrapName: string;
   clinicSettingsWriterName: string;
   invitationAcceptorName: string;
+  knowledgeDocumentProcessorName: string;
 }
 
 /**
@@ -99,6 +102,7 @@ async function createScratchOwner(admin: Client): Promise<Scratch> {
   const authBootstrapName = `test_auth_bootstrap_${suffix}`;
   const clinicSettingsWriterName = `test_csw_${suffix}`; // short: role names truncate at 63 bytes
   const invitationAcceptorName = `test_ia_${suffix}`;
+  const knowledgeDocumentProcessorName = `test_kdp_${suffix}`;
 
   await admin.query(
     `CREATE ROLE ${ownerRoleName} LOGIN PASSWORD '${ownerPassword}' NOSUPERUSER NOBYPASSRLS CREATEROLE`,
@@ -131,6 +135,7 @@ async function createScratchOwner(admin: Client): Promise<Scratch> {
     authBootstrapName,
     clinicSettingsWriterName,
     invitationAcceptorName,
+    knowledgeDocumentProcessorName,
   };
 }
 
@@ -141,6 +146,7 @@ async function dropScratchOwner(admin: Client, scratch: Scratch): Promise<void> 
   await admin.query(`DROP ROLE IF EXISTS ${scratch.authBootstrapName}`);
   await admin.query(`DROP ROLE IF EXISTS ${scratch.clinicSettingsWriterName}`);
   await admin.query(`DROP ROLE IF EXISTS ${scratch.invitationAcceptorName}`);
+  await admin.query(`DROP ROLE IF EXISTS ${scratch.knowledgeDocumentProcessorName}`);
 }
 
 describe('full migration chain (0001-0008) against a non-superuser, non-BYPASSRLS owner role', () => {
@@ -170,6 +176,7 @@ describe('full migration chain (0001-0008) against a non-superuser, non-BYPASSRL
           scratch.authBootstrapName,
           scratch.clinicSettingsWriterName,
           scratch.invitationAcceptorName,
+          scratch.knowledgeDocumentProcessorName,
         );
         await expect(
           ownerClient.query(substituted),
@@ -185,6 +192,7 @@ describe('full migration chain (0001-0008) against a non-superuser, non-BYPASSRL
             scratch.authBootstrapName,
             scratch.clinicSettingsWriterName,
             scratch.invitationAcceptorName,
+            scratch.knowledgeDocumentProcessorName,
           ],
         ],
       );
@@ -213,6 +221,12 @@ describe('full migration chain (0001-0008) against a non-superuser, non-BYPASSRL
           rolbypassrls: false,
           rolcanlogin: false,
         },
+        {
+          rolname: scratch.knowledgeDocumentProcessorName,
+          rolsuper: false,
+          rolbypassrls: false,
+          rolcanlogin: false,
+        },
       ]);
     } finally {
       await ownerClient.end();
@@ -235,6 +249,7 @@ describe('full migration chain (0001-0008) against a non-superuser, non-BYPASSRL
             scratch.authBootstrapName,
             scratch.clinicSettingsWriterName,
             scratch.invitationAcceptorName,
+            scratch.knowledgeDocumentProcessorName,
           ),
         );
       }

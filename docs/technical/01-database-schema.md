@@ -606,22 +606,97 @@ CREATE POLICY tenant_isolation ON knowledge_documents
 ```
 
 - Status only ever moves forward (`processing → ready` or `processing → failed`, never backward —
-  B, KnowledgeDocument aggregate invariant) is enforced at the API layer: the status-transition
-  endpoint only ever issues `UPDATE ... WHERE status = 'processing'`, so a document already `ready`
-  or `failed` simply cannot be matched and moved again. A trigger could additionally guard this at
-  the database layer (symmetric to the escalation-agreement trigger above); it's left to the API
-  layer here because, unlike the Conversation/Escalation case, no other table's state depends on
-  this one holding — a corrected file becomes a new row (B: "a corrected file is a new upload"),
-  not an update path this schema needs to close off structurally.
+  B, KnowledgeDocument aggregate invariant). Since `db/migrations/0020_knowledge_document_chunks.sql`
+  ([ADR-0026](../adr/0026-knowledge-document-text-extraction-and-chunking.md)) this is enforced in
+  the database for `processing → failed`: `app_user` holds no `UPDATE` on this table, and the only
+  write path is `mark_knowledge_document_failed`, which changes a row only while it is `processing`
+  (see `knowledge_document_chunks` below). No path to `ready` exists yet; it belongs to the
+  embeddings slice.
+- 0020 also adds `knowledge_documents_id_key UNIQUE (id, clinic_id)`, the target of the chunks'
+  same-clinic composite foreign key (same pattern as `staff_members_id_key`).
 - "The Assistant may only draw on a document while Ready" is explicitly **not** this table's
   invariant to enforce (B, KnowledgeDocument aggregate: "constrains how a _different_ system — the
   AI pipeline — may consume this aggregate's state") — see
   [`05-ai-pipeline.md`](./05-ai-pipeline.md), which filters retrieval to `status = 'ready'` at query
   time.
-- Retrieval-time content storage (chunks, embeddings) is deliberately **not** a column or table
-  here — see [`06-knowledge-document-storage.md`](./06-knowledge-document-storage.md) for why that
-  supporting structure is introduced separately, and Open Question 3 in
-  [`07-open-questions.md`](./07-open-questions.md) for where it physically lives.
+- Retrieval-time content storage is deliberately **not** a column of this table: the extracted
+  text lives in `knowledge_document_chunks` below
+  ([ADR-0008](../adr/0008-embeddings-storage.md),
+  [ADR-0026](../adr/0026-knowledge-document-text-extraction-and-chunking.md)); embeddings are added
+  to that table by a later migration once a provider is selected
+  ([ADR-0019](../adr/0019-ai-provider-selection.md)). See
+  [`06-knowledge-document-storage.md`](./06-knowledge-document-storage.md).
+
+## `knowledge_document_chunks`
+
+Implemented by `db/migrations/0020_knowledge_document_chunks.sql`, per
+[ADR-0026](../adr/0026-knowledge-document-text-extraction-and-chunking.md) (Accepted). It holds a
+document's canonical text — the extracted text after the versioned NFKC and whitespace
+normalisation — as contiguous, non-overlapping chunks that rebuild it exactly. That canonical text
+is the stored source of ADR-0011 E2. There is no embedding column yet.
+
+```sql
+CREATE TABLE knowledge_document_chunks (
+  id                       uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  clinic_id                uuid NOT NULL REFERENCES clinics(id),
+  document_id              uuid NOT NULL,
+  ordinal                  integer NOT NULL CHECK (ordinal >= 0),
+  content                  text NOT NULL,
+  char_start               integer NOT NULL CHECK (char_start >= 0),
+  char_end                 integer NOT NULL,
+  extractor_version        text NOT NULL,
+  canonicalization_version text NOT NULL,
+  created_at               timestamptz NOT NULL DEFAULT now(),
+
+  CONSTRAINT knowledge_document_chunk_range_nonempty CHECK (char_end > char_start),
+  CONSTRAINT knowledge_document_chunk_content_matches_range
+    CHECK (char_end - char_start = length(content)),
+  CONSTRAINT knowledge_document_chunk_max_length CHECK (char_end - char_start <= 2000),
+  CONSTRAINT knowledge_document_chunk_versions_present CHECK (
+    btrim(extractor_version) <> '' AND length(extractor_version) <= 100
+    AND btrim(canonicalization_version) <> '' AND length(canonicalization_version) <= 100
+  ),
+  CONSTRAINT knowledge_document_chunks_document_ordinal_key UNIQUE (document_id, ordinal),
+  CONSTRAINT knowledge_document_chunks_document_same_clinic
+    FOREIGN KEY (document_id, clinic_id) REFERENCES knowledge_documents (id, clinic_id)
+    ON DELETE CASCADE
+);
+
+ALTER TABLE knowledge_document_chunks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE knowledge_document_chunks FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON knowledge_document_chunks
+  USING (clinic_id = current_setting('app.current_clinic_id', true)::uuid)
+  WITH CHECK (clinic_id = current_setting('app.current_clinic_id', true)::uuid);
+```
+
+- **Offsets.** Zero-based, half-open `[char_start, char_end)`, counted in Unicode code points of the
+  canonical text (PostgreSQL's `length()` on `text`), never UTF-16 units or bytes. The migration
+  refuses to run unless the database encoding is UTF8.
+- **Continuity.** Ordinals start at 0 and are contiguous; the first chunk starts at 0, each next
+  chunk starts where the previous ended, and the last ends at the canonical text's length. Row
+  checks cannot express this across rows; the store function below enforces it for the whole set.
+- **Writes.** `app_user` has `SELECT` only. Chunks are written only by
+  `store_knowledge_document_chunks(document_id, extractor_version, canonicalization_version,
+canonical_text, chunks text[])`. It takes the chunk contents, never offsets: it derives the offsets
+  itself, requires the canonical text to be NFKC-normalised, every chunk to be non-empty and at most
+  2,000 code points, and the chunks concatenated in order to equal the canonical text. It locks the
+  document row, requires the document to be `processing` with no chunk set, and inserts the whole
+  set in one statement, so a document has one complete chunk set or none. It never changes the
+  document's status.
+- **Failure.** `mark_knowledge_document_failed(document_id, reason)` locks the same row and moves a
+  `processing` document with no chunk set to `failed` with one of the closed reason codes of
+  ADR-0026. Because both functions lock the document row, they serialize: a failure can never be
+  recorded after a chunk set is committed, and no chunks can be stored after a failure.
+- **Both functions** derive the clinic only from `app.current_clinic_id` and fail closed without
+  it, refuse to run outside `READ COMMITTED`, use the standard SQLSTATEs (`55000` when the document
+  is not `processing` or already has chunks), are owned by the dedicated `NOLOGIN` role
+  `knowledge_document_processor` (column-scoped `SELECT (id, clinic_id, status)` and
+  `UPDATE (status, failed_reason)` on `knowledge_documents`; column-scoped `SELECT` and `INSERT` on
+  this table), pin `search_path = pg_catalog, public, pg_temp`
+  ([ADR-0024](../adr/0024-security-definer-search-path-and-name-qualification.md)), and are
+  executable by `app_user` only. The migrating role holds `SET` but not `INHERIT` on the owner role
+  ([ADR-0025](../adr/0025-migrating-role-no-inherit-on-function-owner-roles.md)). The owner role
+  has no `BYPASSRLS`, so RLS applies inside both functions.
 
 ## Enforcing the Clinic aggregate's consistency invariant
 

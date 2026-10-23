@@ -42,6 +42,8 @@ interface Roles {
   authBootstrap: string;
   clinicSettingsWriter: string;
   invitationAcceptor: string;
+  /** 0020 / ADR-0026: substituted so 0020 can run in the scratch database too. */
+  knowledgeDocumentProcessor: string;
 }
 
 interface Scratch {
@@ -66,7 +68,8 @@ function substituted(sql: string, roles: Roles): string {
     .replaceAll('app_user', roles.appUser)
     .replaceAll('auth_bootstrap', roles.authBootstrap)
     .replaceAll('clinic_settings_writer', roles.clinicSettingsWriter)
-    .replaceAll('invitation_acceptor', roles.invitationAcceptor);
+    .replaceAll('invitation_acceptor', roles.invitationAcceptor)
+    .replaceAll('knowledge_document_processor', roles.knowledgeDocumentProcessor);
 }
 
 const sha256Hex = (value: string): string => createHash('sha256').update(value).digest('hex');
@@ -82,6 +85,7 @@ async function createScratch(admin: Client): Promise<Scratch> {
       authBootstrap: `test_ni_ab_${suffix}`,
       clinicSettingsWriter: `test_ni_cs_${suffix}`,
       invitationAcceptor: `test_ni_ia_${suffix}`,
+      knowledgeDocumentProcessor: `test_ni_kdp_${suffix}`,
     },
     extraRoles: [],
   };
@@ -372,16 +376,19 @@ describe('migration 0019: owner role keeps SET, loses INHERIT (ADR-0025)', () =>
     });
   });
 
-  it('leaves INHERIT off and SET on for all three roles, directly and effectively', async () => {
+  it('leaves INHERIT off and SET on for every function-owner role, directly and effectively', async () => {
     const s = await setUp();
     await applyMigrations(s, MIGRATION_FILES);
 
     const owner = await connectOwner(s);
     try {
+      // The three roles 0019 fixed, plus knowledge_document_processor, which 0020 grants
+      // with INHERIT FALSE, SET TRUE from the start (ADR-0025, ADR-0026).
       for (const role of [
         s.roles.authBootstrap,
         s.roles.clinicSettingsWriter,
         s.roles.invitationAcceptor,
+        s.roles.knowledgeDocumentProcessor,
       ]) {
         const { rows } = await owner.query<{ usage: boolean; set: boolean; member: boolean }>(
           `SELECT pg_has_role(current_user, $1, 'USAGE') AS usage,

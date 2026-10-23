@@ -31,6 +31,7 @@ decisions don't need one.
 | [0023](./0023-clinic-provisioning-one-time-invitations.md)             | Clinic provisioning and one-time staff invitations                                  | Accepted |
 | [0024](./0024-security-definer-search-path-and-name-qualification.md)  | SECURITY DEFINER functions pin `pg_catalog, public, pg_temp` and qualify every name | Accepted |
 | [0025](./0025-migrating-role-no-inherit-on-function-owner-roles.md)    | The migrating role keeps SET but not INHERIT on the function-owner roles            | Accepted |
+| [0026](./0026-knowledge-document-text-extraction-and-chunking.md)      | Knowledge-document text extraction and chunking                                     | Proposed |
 
 0010 is intentionally unassigned — reserved for the audit-log erasure strategy named as a follow-up
 in [ADR-0009](./0009-data-residency.md), not yet written.

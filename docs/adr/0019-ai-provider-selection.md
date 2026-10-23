@@ -7,7 +7,8 @@ Proposed
 ## Date
 
 2026-09-20 (first draft); revised 2026-10-18 to record the Mistral privacy-team evidence of
-2026-09-30 and the owner rulings R1-R4 of 2026-10-18.
+2026-09-30 and the owner rulings R1-R4 of 2026-10-18; revised 2026-10-23 to record vendor
+correspondence of 2026-10-19 to 2026-10-23 and the Scaleway binding documents read.
 
 ## Phase
 
@@ -313,7 +314,72 @@ globally headquartered does not by itself establish a breach: each candidate is 
 product-specific DPA, sub-processor list, data-location terms, special-category position, retention
 terms and support-access rules.
 
+### Vendor correspondence and binding documents, 2026-10-19 to 2026-10-23
+
+Written requests asking each EU-native candidate for its binding documents (DPA and Article 9
+position, sub-processor list with locations, no-training clause, retention terms, data-centre
+locations and routing, structured-output support) were sent to OVHcloud (`dpo@ovh.com`, 2026-10-19,
+case CS16972065) and to Scaleway (`privacy@scaleway.com`) and IONOS (`datenschutz@ionos.de`) on
+2026-10-22, after the owner had also used each vendor's web form. As of 2026-10-23: OVHcloud and
+IONOS have sent automatic acknowledgements only; Mistral has not answered the owner's 2026-10-18
+follow-up. Scaleway answered twice (2026-10-23).
+
+**Scaleway Generative APIs.** Two documents named in Scaleway's answer were opened and read:
+
+- [5] Scaleway, "Specific Conditions Applicable to AI Services", version of 07/04/2026, the PDF
+  linked from Scaleway's Generative APIs privacy documentation
+  (`https://www-uploads.scaleway.com/Specific_Conditions_AI_Services_275907180f.pdf`). Opened and
+  read in full on 2026-10-23. Type: binding contract terms (they supplement and prevail over the
+  General Terms of Service). Scope: Article 1 defines "AI Services" as Generative API and Managed
+  Inference. Proves the no-training terms below; does not state a data location or a numeric
+  retention ceiling.
+- [6] Scaleway, "Data Processing Agreement", version of June 1st, 2024
+  (`https://www-uploads.scaleway.com/DPA_2024_ENG_b0abb5cc26.pdf`); passages extracted from the PDF
+  and read on 2026-10-23, not the full text. Type: binding contract terms, all Scaleway services.
+  Proves the §2.1 and transfer passages quoted below; does not settle whether a later version
+  applies. Scaleway's contracts page lists a DPA without a date, and Scaleway answered "the June
+  1st, 2024 DPA (or the updated consolidated version)".
+- Scaleway's Generative APIs privacy documentation page (validated 2025-10-03, read 2026-10-23).
+  Type: documentation page, which this ADR does not treat as the contract (see "How evidence is
+  classified"); Scaleway states it supplements [5].
+- Scaleway privacy team emails of 2026-10-23 (two). Type: correspondence.
+
+Here, VERIFIED keeps the meaning set in "How evidence is classified": a binding document that
+applies to the named service was opened and read and states the term. It is not an approval of the
+provider, and the version in force for this product's account must be confirmed again at contract
+time.
+
+| Constraint                   | Scaleway's emails (correspondence)                                                                                                                                         | Binding documents read                                                                                                                                                                                                                                                                                                                                                             | Classification                                                                                                                                                              |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 3. No training               | Article 4.4 of [5]                                                                                                                                                         | [5] Art. 4.4: client data, including prompts and completions, "is not used to train, retrain, or improve the base Models", "is not accessible by LLM Model providers", "is not used to improve the Service" and "is not accessible by third-party services"                                                                                                                        | **VERIFIED** for Generative API and Managed Inference                                                                                                                       |
+| Retention                    | Zero retention; an error or abuse exception with a "contractual ceiling" of 14 days                                                                                        | [5] Art. 4.4: no retention after processing, except that Scaleway "may temporarily retain the content of the HTTP request" after malicious activity or service-quality incidents, with **no stated duration**; Batch Processing inputs are kept 24 hours (Batch Processing is not part of any approved design). The 14-day ceiling appears only in the privacy documentation page  | **VERIFICATION REQUIRED**: open whether the page forms part of the contract, which document prevails, and whether the ceiling covers every exception case                   |
+| 1. EU/EEA residency          | Processing only in Paris (fr-par), never routed outside the EU/EEA; Scaleway "contractually guarantees" no transfer; asked for a contractual addendum, Scaleway declined   | [5] states no data location. [6] allows Scaleway to transmit or store personal data outside the EU after informing the client in advance, under Standard Contractual Clauses                                                                                                                                                                                                       | **VERIFICATION REQUIRED**: no sufficient contractual commitment to EEA-only processing found so far (not a finding that data leaves the EEA); ADR-0009 §4 stays strict (R1) |
+| 4. DPA covers Article 9 data | Nothing in the terms prohibits Article 9 data. Generative APIs and Managed Inference are **not** in the scope of Scaleway's HDS certification (extension "on our roadmap") | [6] §2.1: data categories are defined by the client; and "when Scaleway offers Services adapted to particular types of processing, the Client must use the Services concerned", in particular for "health data". No exclusion of special-category data was found in the passages read                                                                                              | **VERIFICATION REQUIRED**, and see the open question below                                                                                                                  |
+| Sub-processors               | None for Generative APIs; physical hosting by Op Core, a Scaleway group entity in France; list at `https://www.scaleway.com/en/official-sub-processors/`                   | The list could not be retrieved on 2026-10-23 (the page returned an error). Scaleway's support emails are delivered through Zendesk; this shows a third-party tool in the support channel, not that it receives inference content. Inference content, account/billing/technical logs and support-ticket content are separate data flows, each needing its own sub-processor answer | **VERIFICATION REQUIRED**                                                                                                                                                   |
+| 2. Structured output         | Tool calling and JSON mode or JSON Schema on several models                                                                                                                | Not a contract question                                                                                                                                                                                                                                                                                                                                                            | **VERIFICATION REQUIRED** (gate 2)                                                                                                                                          |
+| 5. Language coverage         | Not asked                                                                                                                                                                  | —                                                                                                                                                                                                                                                                                                                                                                                  | **VERIFICATION REQUIRED** (gate 2)                                                                                                                                          |
+
+Scaleway therefore does **not** pass gate 1 (Contract) of the five-gate model below: residency,
+retention, sub-processors and the Article 9 position remain open. This is ineligibility under this
+product's own constraints, not a finding that Scaleway fails the GDPR. One constraint (no training)
+is now verified from a binding document, the first for any candidate.
+
+**Open question raised by this evidence (not decided here).** [6] §2.1 asks the client to use
+services adapted to health-data processing where Scaleway offers them, and Scaleway states that
+Generative APIs and Managed Inference are outside its HDS certification, which is a French statutory
+scheme (Article L. 1111-8 of the French Public Health Code). Whether HDS, or an equivalent national
+scheme, applies to this product's AI inference for clinics in Greece or other EU/EEA countries is a
+regulatory question for the ADR-0011 §5 external adviser, not for this ADR, and it is not assumed
+to concern France only. Until it is answered it is a separate blocker: no real patient data is sent
+to Scaleway's AI Services. Scaleway named, as an
+alternative, running a model on its HDS-certified infrastructure (for example dedicated GPU
+instances); that would make model hosting this product's own operational responsibility, which no
+ruling has considered.
+
 ### Classification: every mandatory constraint is VERIFICATION REQUIRED, for every candidate
+
+This classification predates the 2026-10-23 evidence above, which marks one exception: Scaleway's
+no-training clause (constraint 3) is VERIFIED.
 
 **1. EU/EEA data residency.** Issue #18 is an internal shortlist, not a vendor document, and it says
 so itself ("re-verify vendor pages before any contractual commitment; residency terms shifted

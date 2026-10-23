@@ -129,6 +129,12 @@ result.
   instance. The recovery instance **always** copies the original's IP allow list.
 - The page does not state the recovery instance's region, or its cost. Both must be confirmed in the
   dashboard before Phase 3 (ADR-0009 §3 requires EU/EEA for backups and copies).
+- Render support (email of 2026-10-22, correspondence, not documentation): a recovery instance's
+  data "stays in the region it originated in" (Frankfurt for `clinic-ai-db`); with "Copy Existing
+  Settings" it uses the original's plan, and choosing to customise allows a different plan; it is
+  "only charged while the service is running". This is the support team's answer, not Render's
+  documentation or a change to its terms; the region and the billing details are still unproven
+  until Phase 3 step 1 confirms them in the dashboard.
 - Render also offers dashboard "Create export" logical backups (`.dir.tar.gz`, retained 7 days).
   The page does not say which database role produces them. Whether they include rows under FORCE
   RLS is **unknown**; they are not relied on until tested.
@@ -159,5 +165,6 @@ the synthetic demo clinic (pilot readiness item) to exist first.
   rows that point to files that no longer exist, or miss files uploaded after the restore point.
   Recorded here as an open item only; no bucket change is made (Owner ruling, 2026-10-19).
 - Render dashboard exports under FORCE RLS: untested (Phase 2).
-- Recovery instance region and cost: unconfirmed (Phase 2).
+- Recovery instance region and cost: Render support says the same region and billing only while it
+  runs (2026-10-22); still to be confirmed in the dashboard at Phase 3 step 1.
 - `production-rebuild-runbook.md` is out of date (see "Why this exists").

@@ -33,11 +33,22 @@ place (`docs/technical/01-database-schema.md`).
   `/dashboard/knowledge-base` screens, and the list item shape without
   `storageKey`, `clinicId` or `uploadedBy`.
 
-## Text extraction and chunking (ADR-0026, PR C — not wired yet)
+## Text extraction and chunking (ADR-0026)
+
+After a successful completion, the route schedules
+`processKnowledgeDocument(clinicId, documentId)` (`./processing.ts`) with
+Next.js `after()`. It re-validates the stored object (HeadObject, then
+`readObjectForExtraction`: a whole-object read bound to the HeadObject ETag and
+length — the full-body read ADR-0021 required a decision for, made by ADR-0026
+section 3), extracts and chunks the text, and records the result through the
+0020 functions (`storeKnowledgeDocumentChunks` / `markKnowledgeDocumentFailed`
+in `./repository.ts`). One document at a time per process; it never throws, and
+it logs only the document id and an outcome code. A stored document stays
+`processing` (D9); a failed one shows an Arabic message per reason on the
+knowledge-base screen.
 
 `./extraction/` turns a PDF's bytes into the document's canonical text and its
-chunks. It is **not called by any route yet** (that is PR D, which also adds the
-storage re-validation read) and touches no database or storage.
+chunks, and touches no database or storage itself.
 
 - `extract.ts` — `extractKnowledgeDocumentText(bytes)` runs PDF.js
   (`pdfjs-dist`, pinned exactly) in a `worker_threads` worker with a V8
@@ -48,7 +59,8 @@ storage re-validation read) and touches no database or storage.
   `no_extractable_text`, `encrypted`). No exception message or file text is
   ever returned or logged. The worker is **not** process isolation: a hostile
   file can still put the whole process under memory pressure (ADR-0026
-  section 1).
+  section 1). The heap limit is 128 MiB (Owner ruling G2: production runs on a
+  512 MB instance).
 - `pdf-worker.mjs` — the only file that loads PDF.js. It blocks every network
   module and `fetch`, refuses to load the optional native `@napi-rs/canvas`
   package (PDF.js only wants it for rendering), and silences console output.
@@ -76,8 +88,9 @@ Known limitations (recorded, not hidden):
 
 **Not yet implemented** (a later slice, not this one):
 
-- Any route that runs extraction, or the storage re-validation read (PR D).
 - Moving a document to `ready`, embeddings, pgvector, or any AI/retrieval code.
+- Retrying or detecting a document left `processing` by a restart (reviewed
+  before the first real clinic, Owner ruling D6).
 - Delete/download operations on `knowledge_documents`.
 - Orphan-object reconciliation (an object uploaded but never completed is an
   accepted limitation of this slice, not a bug — see

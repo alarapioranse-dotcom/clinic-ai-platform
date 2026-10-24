@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/Button';
+import { failureMessage } from './failure-messages';
 
 /** `GET /api/knowledge-documents`'s item shape (no storageKey, clinicId or uploadedBy). */
 interface KnowledgeDocumentItem {
@@ -25,9 +26,11 @@ type ListState =
   | { status: 'ready'; documents: KnowledgeDocumentItem[] };
 
 /**
- * Owner decision D1: every completed upload starts as `processing`. Nothing
- * in Slice 1C moves a document to `ready` or `failed` — that is a later
- * processing slice — but both are shown correctly if they ever appear.
+ * Owner decision D1: every completed upload starts as `processing`. Since
+ * ADR-0026 (PR D) extraction can move a document to `failed`, shown with an
+ * Arabic message per reason code (`./failure-messages`). A document whose text
+ * was extracted stays `processing` until the embeddings slice (Owner ruling
+ * D9): "قيد المعالجة" means it is not yet usable by the assistant.
  */
 const STATUS_LABELS: Record<KnowledgeDocumentItem['status'], string> = {
   processing: 'قيد المعالجة',
@@ -172,9 +175,9 @@ export function KnowledgeDocumentsList() {
                   >
                     {STATUS_LABELS[document.status]}
                   </span>
-                  {document.status === 'failed' && document.failedReason && (
-                    <p className="text-muted mt-1 text-xs" dir="auto">
-                      {document.failedReason}
+                  {document.status === 'failed' && (
+                    <p className="text-muted mt-1 text-xs">
+                      {failureMessage(document.failedReason)}
                     </p>
                   )}
                 </td>

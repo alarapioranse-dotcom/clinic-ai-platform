@@ -340,4 +340,80 @@ describe('full migration chain (0001-0008) against a non-superuser, non-BYPASSRL
       await appUserClient.end();
     }
   });
+
+  it('leaves every SECURITY DEFINER function executable by its owner and app_user only, with no privilege warnings', async () => {
+    // Regression for migration 0020 as first merged: it moved function ownership before revoking
+    // PUBLIC's EXECUTE. After 0019 the migrating role keeps SET but not INHERIT on the owner role,
+    // so under a non-superuser owner (production's shape) the REVOKE/GRANT only produced warnings
+    // and PUBLIC kept EXECUTE. CI migrates as a superuser, which hid it; this test does not.
+    admin = new Client({ connectionString: getDatabaseUrl() });
+    await admin.connect();
+    scratch = await createScratchOwner(admin);
+    const s = scratch;
+
+    const warnings: string[] = [];
+    const ownerClient = new Client({ connectionString: s.ownerConnectionString });
+    ownerClient.on('notice', (notice) => {
+      if (notice.severity === 'WARNING') warnings.push(notice.message ?? '(no message)');
+    });
+    await ownerClient.connect();
+    try {
+      for (const { sql } of MIGRATION_FILES) {
+        await ownerClient.query(
+          roleSubstitutedSql(
+            sql,
+            s.appUserName,
+            s.authBootstrapName,
+            s.clinicSettingsWriterName,
+            s.invitationAcceptorName,
+            s.knowledgeDocumentProcessorName,
+          ),
+        );
+      }
+    } finally {
+      await ownerClient.end();
+    }
+
+    expect(warnings).toEqual([]);
+
+    const scratchAdmin = new Client({
+      connectionString: withDatabaseName(getDatabaseUrl(), s.databaseName),
+    });
+    await scratchAdmin.connect();
+    try {
+      const { rows } = await scratchAdmin.query<{
+        signature: string;
+        owner: string;
+        acl: string;
+        public_execute: boolean;
+      }>(
+        `SELECT p.oid::regprocedure::text AS signature,
+                pg_get_userbyid(p.proowner) AS owner,
+                p.proacl::text AS acl,
+                has_function_privilege('public', p.oid, 'EXECUTE') AS public_execute
+           FROM pg_proc p
+          WHERE p.prosecdef AND p.pronamespace = 'public'::regnamespace
+          ORDER BY 1`,
+      );
+      const expected = (signature: string, owner: string) => ({
+        signature,
+        owner,
+        acl: `{${owner}=X/${owner},${s.appUserName}=X/${owner}}`,
+        public_execute: false,
+      });
+      expect(rows).toEqual([
+        expected('accept_invitation(text,text)', s.invitationAcceptorName),
+        expected('auth_lookup_session_by_token_hash(text)', s.authBootstrapName),
+        expected('auth_lookup_staff_by_email(text)', s.authBootstrapName),
+        expected('mark_knowledge_document_failed(uuid,text)', s.knowledgeDocumentProcessorName),
+        expected('set_clinic_settings(jsonb,text)', s.clinicSettingsWriterName),
+        expected(
+          'store_knowledge_document_chunks(uuid,text,text,text,text[])',
+          s.knowledgeDocumentProcessorName,
+        ),
+      ]);
+    } finally {
+      await scratchAdmin.end();
+    }
+  });
 });

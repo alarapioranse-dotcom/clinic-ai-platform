@@ -293,10 +293,16 @@ COMMENT ON FUNCTION store_knowledge_document_chunks(uuid, text, text, text, text
   'without tenant context or outside READ COMMITTED. Never changes document status. Do not add a '
   'clinic-id argument, accept caller-supplied offsets, or widen the EXECUTE grant.';
 
-ALTER FUNCTION store_knowledge_document_chunks(uuid, text, text, text, text[])
-  OWNER TO knowledge_document_processor;
+-- Privileges are set BEFORE ownership moves, while the migrating role still
+-- owns the function. After 0019 (ADR-0025) the migrating role holds SET but
+-- not INHERIT on the owner role, so once ownership is transferred it can no
+-- longer revoke or grant on the function: PostgreSQL then only warns ("no
+-- privileges could be revoked") and PUBLIC keeps EXECUTE. ALTER ... OWNER
+-- carries these ACL entries over to the new owner as grantor.
 REVOKE ALL ON FUNCTION store_knowledge_document_chunks(uuid, text, text, text, text[]) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION store_knowledge_document_chunks(uuid, text, text, text, text[]) TO app_user;
+ALTER FUNCTION store_knowledge_document_chunks(uuid, text, text, text, text[])
+  OWNER TO knowledge_document_processor;
 
 -- 6b. Mark a document failed (E6). Only while it is processing and has no
 -- chunk set: a complete chunk set can never be turned into a failure by a
@@ -370,9 +376,10 @@ COMMENT ON FUNCTION mark_knowledge_document_failed(uuid, text) IS
   'fails closed without tenant context or outside READ COMMITTED. Do not add a clinic-id argument, '
   'free-text reasons, other target statuses, or widen the EXECUTE grant.';
 
-ALTER FUNCTION mark_knowledge_document_failed(uuid, text) OWNER TO knowledge_document_processor;
+-- Same order as above: privileges first, then ownership.
 REVOKE ALL ON FUNCTION mark_knowledge_document_failed(uuid, text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION mark_knowledge_document_failed(uuid, text) TO app_user;
+ALTER FUNCTION mark_knowledge_document_failed(uuid, text) OWNER TO knowledge_document_processor;
 
 -- 7. ADR-0025 fail-closed check for the new role, same shape as 0019's.
 -- Skipped only for a superuser, for which role inheritance and row level

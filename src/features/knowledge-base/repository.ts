@@ -166,3 +166,75 @@ export async function insertKnowledgeDocument(
     throw err;
   }
 }
+
+/**
+ * `55000 object_not_in_prerequisite_state`: the 0020 functions' answer when a
+ * document is no longer `processing` or already has a chunk set — a stale or
+ * conflicting report the caller must not overwrite (ADR-0026 section 7, E6).
+ */
+const NOT_PROCESSING_OR_CHUNKED = '55000';
+
+function isStaleReport(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    'code' in err &&
+    (err as { code?: unknown }).code === NOT_PROCESSING_OR_CHUNKED
+  );
+}
+
+export interface KnowledgeDocumentChunkSet {
+  canonicalText: string;
+  chunks: string[];
+  extractorVersion: string;
+  canonicalizationVersion: string;
+}
+
+/**
+ * Stores one complete chunk set through `store_knowledge_document_chunks`
+ * (db/migrations/0020, ADR-0026) — the only write path; `app_user` has no
+ * direct write on `knowledge_document_chunks`. The database derives every
+ * offset, validates the whole set and leaves the document `processing`.
+ * Returns `'stale'` when the document is no longer `processing` or already
+ * has a chunk set; any other database error is thrown.
+ */
+export async function storeKnowledgeDocumentChunks(
+  client: PoolClient,
+  documentId: string,
+  chunkSet: KnowledgeDocumentChunkSet,
+): Promise<'stored' | 'stale'> {
+  try {
+    await client.query('SELECT store_knowledge_document_chunks($1, $2, $3, $4, $5::text[])', [
+      documentId,
+      chunkSet.extractorVersion,
+      chunkSet.canonicalizationVersion,
+      chunkSet.canonicalText,
+      chunkSet.chunks,
+    ]);
+    return 'stored';
+  } catch (err) {
+    if (isStaleReport(err)) return 'stale';
+    throw err;
+  }
+}
+
+/**
+ * Moves a `processing` document with no chunk set to `failed` through
+ * `mark_knowledge_document_failed` (db/migrations/0020, ADR-0026). `reason`
+ * must be one of the closed codes the function accepts. Returns `'stale'`
+ * when the document already left `processing` or has a chunk set; any other
+ * database error is thrown.
+ */
+export async function markKnowledgeDocumentFailed(
+  client: PoolClient,
+  documentId: string,
+  reason: string,
+): Promise<'failed' | 'stale'> {
+  try {
+    await client.query('SELECT mark_knowledge_document_failed($1, $2)', [documentId, reason]);
+    return 'failed';
+  } catch (err) {
+    if (isStaleReport(err)) return 'stale';
+    throw err;
+  }
+}

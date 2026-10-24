@@ -340,4 +340,119 @@ describe('full migration chain (0001-0008) against a non-superuser, non-BYPASSRL
       await appUserClient.end();
     }
   });
+
+  it('leaves every SECURITY DEFINER function executable by its owner and app_user only, with no privilege warnings', async () => {
+    // Regression for migration 0020 as first merged: it moved function ownership before revoking
+    // PUBLIC's EXECUTE. After 0019 the migrating role keeps SET but not INHERIT on the owner role,
+    // so under a non-superuser owner (production's shape) the REVOKE/GRANT only produced warnings
+    // and PUBLIC kept EXECUTE. CI migrates as a superuser, which hid it; this test does not.
+    admin = new Client({ connectionString: getDatabaseUrl() });
+    await admin.connect();
+    scratch = await createScratchOwner(admin);
+    const s = scratch;
+
+    const warnings: string[] = [];
+    const ownerClient = new Client({ connectionString: s.ownerConnectionString });
+    ownerClient.on('notice', (notice) => {
+      if (notice.severity === 'WARNING') warnings.push(notice.message ?? '(no message)');
+    });
+    await ownerClient.connect();
+    try {
+      for (const { sql } of MIGRATION_FILES) {
+        await ownerClient.query(
+          roleSubstitutedSql(
+            sql,
+            s.appUserName,
+            s.authBootstrapName,
+            s.clinicSettingsWriterName,
+            s.invitationAcceptorName,
+            s.knowledgeDocumentProcessorName,
+          ),
+        );
+      }
+    } finally {
+      await ownerClient.end();
+    }
+
+    expect(warnings).toEqual([]);
+
+    const scratchAdmin = new Client({
+      connectionString: withDatabaseName(getDatabaseUrl(), s.databaseName),
+    });
+    await scratchAdmin.connect();
+    try {
+      const { rows } = await scratchAdmin.query<{
+        signature: string;
+        owner: string;
+        acl: string;
+        config: string[] | null;
+        public_execute: boolean;
+        app_user_execute: boolean;
+        owner_login: boolean;
+        owner_super: boolean;
+        owner_bypassrls: boolean;
+      }>(
+        `SELECT p.oid::regprocedure::text AS signature,
+                pg_get_userbyid(p.proowner) AS owner,
+                p.proacl::text AS acl,
+                p.proconfig AS config,
+                has_function_privilege('public', p.oid, 'EXECUTE') AS public_execute,
+                has_function_privilege($1, p.oid, 'EXECUTE') AS app_user_execute,
+                o.rolcanlogin AS owner_login,
+                o.rolsuper AS owner_super,
+                o.rolbypassrls AS owner_bypassrls
+           FROM pg_proc p
+           JOIN pg_roles o ON o.oid = p.proowner
+          WHERE p.prosecdef AND p.pronamespace = 'public'::regnamespace
+          ORDER BY 1`,
+        [s.appUserName],
+      );
+      // Direct ACL (exact: no other grantee, the owner as grantor) AND effective privileges,
+      // the owner role's attributes and the pinned search_path (ADR-0024).
+      const expected = (signature: string, owner: string) => ({
+        signature,
+        owner,
+        acl: `{${owner}=X/${owner},${s.appUserName}=X/${owner}}`,
+        config: ['search_path=pg_catalog, public, pg_temp'],
+        public_execute: false,
+        app_user_execute: true,
+        owner_login: false,
+        owner_super: false,
+        owner_bypassrls: false,
+      });
+      expect(rows).toEqual([
+        expected('accept_invitation(text,text)', s.invitationAcceptorName),
+        expected('auth_lookup_session_by_token_hash(text)', s.authBootstrapName),
+        expected('auth_lookup_staff_by_email(text)', s.authBootstrapName),
+        expected('mark_knowledge_document_failed(uuid,text)', s.knowledgeDocumentProcessorName),
+        expected('set_clinic_settings(jsonb,text)', s.clinicSettingsWriterName),
+        expected(
+          'store_knowledge_document_chunks(uuid,text,text,text,text[])',
+          s.knowledgeDocumentProcessorName,
+        ),
+      ]);
+
+      // No default privileges exist that could grant EXECUTE on functions created later: the
+      // protection is each function's own REVOKE, not a default.
+      const defaults = await scratchAdmin.query<{ n: number }>(
+        'SELECT count(*)::int AS n FROM pg_default_acl',
+      );
+      expect(defaults.rows[0]!.n).toBe(0);
+
+      // The function bodies a non-superuser chain produces are identical to the ones the
+      // superuser-migrated test database holds: the ACL fix changed privileges, not logic.
+      const bodies = async (client: Client) =>
+        (
+          await client.query<{ signature: string; md5: string }>(
+            `SELECT p.oid::regprocedure::text AS signature, md5(p.prosrc) AS md5
+               FROM pg_proc p
+              WHERE p.prosecdef AND p.pronamespace = 'public'::regnamespace
+              ORDER BY 1`,
+          )
+        ).rows;
+      expect(await bodies(scratchAdmin)).toEqual(await bodies(admin));
+    } finally {
+      await scratchAdmin.end();
+    }
+  });
 });

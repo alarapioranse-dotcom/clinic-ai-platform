@@ -1,10 +1,30 @@
 # P1 procedure — apply migration 0020 to production
 
 **Status:** prepared and rehearsed, **not executed**. Running it needs a separate, explicit Owner
-approval. **Scope:** production database `clinic-ai-db` (`dpg-daekbjmq1p3s739nc4og-a`) only, as
-`clinic_ai_platform_user`, from the Owner's Termux. **Prerequisite:** PR #112 merged (0020 sets
-function privileges before the ownership transfer). This file contains no secret; the database URL
-is typed into Termux with `read -rs` and never written down.
+approval. **Scope:** production database `clinic-ai-db` (`dpg-daekbjmq1p3s739nc4og-a`) only,
+executing as `clinic_ai_platform_user`, from the Owner's Termux. **Prerequisite:** PR #112 merged
+(0020 sets function privileges before the ownership transfer). This file contains no secret; the
+database URL is typed into Termux with `read -rs` and never written down.
+
+## Login role versus executing role
+
+Since the credential rotation of 2026-09-12 (`docs/operations/2026-09-12-credential-exposure.md`),
+the only credential Render offers for `clinic-ai-db` is `clinic_ai_platform_user2`, so the External
+Database URL carries that user name. Read-only checks on 2026-10-25 showed how Render set it up:
+
+- `clinic_ai_platform_user` still exists, cannot log in, and still owns the database, the `public`
+  schema and every table and index (10 tables, 28 indexes).
+- `clinic_ai_platform_user2` can log in, is a member of `clinic_ai_platform_user` (granted by
+  `postgres`, `INHERIT TRUE, SET TRUE`), and has the role setting
+  `role=clinic_ai_platform_user` for all databases.
+- So every session opened with the External Database URL runs with
+  `current_user = clinic_ai_platform_user` (`session_user = clinic_ai_platform_user2`). Migration
+  0019 was applied on 2026-10-18 in exactly this way.
+
+The URL guard therefore checks the login name `clinic_ai_platform_user2`; the pre-check, the apply
+block and the post-check check and use the executing role `clinic_ai_platform_user`, unchanged.
+Objects created by 0020 are owned by `clinic_ai_platform_user`, like every other object. If the pre-check
+does not show `who = clinic_ai_platform_user`, it prints `STOP`.
 
 Rulings applied (2026-10-25): any result other than `READY` stops before the apply; any result
 other than `VERIFIED` stops P1 and blocks #111 (Q4); PITR is not relied on (Q3) — a failure before
@@ -30,16 +50,29 @@ Confirm on `clinic-ai-db` that point-in-time recovery is enabled, and note the t
 
 ## 1. URL guard (after `read -rs DATABASE_URL && export DATABASE_URL PGSSLMODE=require`)
 
-Accepts only the production database as `clinic_ai_platform_user`; anything else is unset.
+Accepts only the External Database URL of the production database (full host name and database
+name) with the login `clinic_ai_platform_user2`; anything else is unset. The Internal Database URL
+(host without a domain) is rejected, and so is any URL with a second `@` or an extra `/` (Render's
+passwords contain neither), so the wildcard for the password cannot swallow another host.
 
 ```sh
 case "$DATABASE_URL" in
-  postgres://clinic_ai_platform_user:*@dpg-daekbjmq1p3s739nc4og-a.*|postgresql://clinic_ai_platform_user:*@dpg-daekbjmq1p3s739nc4og-a.*)
-    echo "HOST-OK: production clinic-ai-db as clinic_ai_platform_user" ;;
+  *@*@*|*://*/*/*)
+    echo "STOP: this is not the production database URL"; unset DATABASE_URL ;;
+  postgresql://clinic_ai_platform_user2:*@dpg-daekbjmq1p3s739nc4og-a.frankfurt-postgres.render.com/clinic_ai_platform|postgres://clinic_ai_platform_user2:*@dpg-daekbjmq1p3s739nc4og-a.frankfurt-postgres.render.com/clinic_ai_platform)
+    echo "HOST-OK: production clinic-ai-db as clinic_ai_platform_user2" ;;
   *)
     echo "STOP: this is not the production database URL"; unset DATABASE_URL ;;
 esac
 ```
+
+If it prints `STOP`, the URL's shape can be shown without its password:
+
+```sh
+echo "length=${#DATABASE_URL}"; printf '%s\n' "$DATABASE_URL" | sed -E 's#^([a-z]+)://([^:@/]*)(:.*)?@([^/:?@]*).*$#scheme=\1 user=\2 host=\4#; t; s#.*#format not recognised#'
+```
+
+(Run it before the guard, since the guard unsets the variable.)
 
 ## 2. Read-only pre-check — must print `READY`
 
@@ -193,3 +226,32 @@ lock timeout` after 5 s, exit 3; the pre-check still said `READY` (nothing chang
 - The original 0020 (before #112) on a fresh cluster: exit 0 with four `WARNING` lines, post-check
   `NOT VERIFIED`.
 - A second apply fails at the first DDL statement and changes nothing.
+
+That first rehearsal logged in as `clinic_ai_platform_user` itself. The first production attempt on
+2026-10-25 stopped at the original guard, which expected that user name in the URL: the External
+Database URL carries `clinic_ai_platform_user2` (see "Login role versus executing role"). Nothing was
+run against production beyond the two read-only checks that established the setup.
+
+## Second rehearsal (2026-10-25, rotated credential shape)
+
+Fresh PostgreSQL 16 cluster from main `187ce0a`, set up like production after the 2026-09-12
+rotation: `clinic_ai_platform_user` (`CREATEROLE`, `CREATEDB`, Render's `pg_read_all_stats` and
+`pg_signal_backend` grants) owns the database and was made `NOLOGIN`; `clinic_ai_platform_user2`
+logs in, is a member of `clinic_ai_platform_user` (`INHERIT TRUE, SET TRUE`, granted by
+`postgres`), and has `role=clinic_ai_platform_user` as its role setting. Migrations 0001-0019 ran
+through the repository runner logged in as `clinic_ai_platform_user2`; the resulting membership
+rows matched production's row for row (apart from production's unrelated `datadog` row). Then the
+blocks of this file, with the downloaded file checked by `sha256sum -c`:
+
+- URL guard: accepted the production External Database URL shape with `clinic_ai_platform_user2`;
+  rejected the old user name, the Internal Database URL host, another database name, a query string,
+  a host with an appended domain, another `dpg-` host, `app_user`, a URL with a second `@` and a URL
+  with an extra `/` (each unset the variable). The shape helper shows the real host, and none of the
+  password, even when the password contains `@` or `:`.
+- Pre-check: `READY`, `who = clinic_ai_platform_user`.
+- Apply while another session held a lock on `knowledge_documents`: `canceling statement due to
+lock timeout` after 5 s, exit 3; the pre-check still said `READY`.
+- Apply: `who = clinic_ai_platform_user`, `INSERT 0 1`, `COMMIT`, exit 0, no warnings. Post-check:
+  `VERIFIED`, every column true.
+- After the apply: `knowledge_document_chunks` is owned by `clinic_ai_platform_user`;
+  `clinic_ai_platform_user2` has no `USAGE` on `knowledge_document_processor`.

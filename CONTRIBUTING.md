@@ -28,6 +28,30 @@ reading or writing a diff:
    keeps required variables validated in one place and makes it possible to
    grep for every environment dependency the app has.
 
+## Migrations that touch SECURITY DEFINER functions
+
+CI applies migrations as a superuser, but production applies them as a non-superuser owner role
+that holds `SET` but not `INHERIT` on the function-owner roles
+([ADR-0025](docs/adr/0025-migrating-role-no-inherit-on-function-owner-roles.md)). A privilege
+statement that works as a superuser can silently do nothing there: PostgreSQL only warns, and the
+migration still commits. Migration 0020 shipped that way once (PUBLIC kept `EXECUTE` on two
+functions) and was caught only in the production-apply rehearsal.
+
+So every migration that creates or replaces a `SECURITY DEFINER` function, changes its owner, or
+changes its privileges:
+
+1. sets the function's privileges (`REVOKE ... FROM PUBLIC`, `GRANT EXECUTE ... TO app_user`)
+   **before** `ALTER FUNCTION ... OWNER TO`, while the migrating role still owns it, and follows
+   ADR-0025's `SET LOCAL ROLE` rule when replacing an existing function;
+2. must pass `tests/db/migration-full-chain-non-superuser.test.ts`, which runs every migration as a
+   production-shaped non-superuser owner and requires zero `WARNING` notices and the exact ACL,
+   owner, owner-role attributes, `search_path` and body of every `SECURITY DEFINER` function. A new
+   function is added to that test's expected list deliberately, in the same pull request;
+3. is rehearsed on a production-shaped database before it is applied to production, with a
+   post-check that ends in `VERIFIED`; anything else stops the production step.
+
+A green superuser CI run alone does not satisfy this rule.
+
 ## Running the checks locally
 
 Copy `.env.example` to `.env.local` first (gitignored, never committed) so `NEXT_PUBLIC_APP_URL`

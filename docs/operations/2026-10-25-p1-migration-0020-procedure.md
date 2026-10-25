@@ -45,7 +45,32 @@ still verifies every resulting privilege exactly. The pre-check and the post-che
 role (`clinic_ai_platform_user`, `knowledge_document_processor` or another) or any change to
 Render's rows prints `STOP` / `NOT VERIFIED`. The first version of this file required the table to
 be empty, which held in the rehearsal clusters but not in production, so the pre-check of
-2026-10-25 printed `STOP` (all its other conditions were true) and nothing was applied.
+2026-10-25 printed `STOP` (all its other conditions were true) and nothing was applied. The rows
+are compared in a fixed order (role, schema, object type, ACL), so the comparison does not depend
+on catalog order.
+
+## Production facts the checks rely on (read-only, 2026-10-25)
+
+Every expected value below was read from production in a `BEGIN TRANSACTION READ ONLY` ...
+`ROLLBACK` session before it was written into a check, not taken from a rehearsal:
+
+| Fact                              | Production value                                                                                |
+| --------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Server version                    | `16.15`                                                                                         |
+| `current_user` / `session_user`   | `clinic_ai_platform_user` / `clinic_ai_platform_user2`                                          |
+| Transport                         | TLS (`TLSv1.3`); a `verify-full` connection with the system trust store succeeded               |
+| Migration ids (19)                | `md5` of the ids in `C` order joined by `,` = `d2fa84678c8a8b827c15265703e45163` (= repository) |
+| Event triggers                    | none                                                                                            |
+| `knowledge_documents` table ACL   | `{clinic_ai_platform_user=arwdDxt/clinic_ai_platform_user,app_user=ar/clinic_ai_platform_user}` |
+| `knowledge_documents` column ACLs | none                                                                                            |
+| `pg_default_acl`                  | Render's four rows (above)                                                                      |
+| Role / database settings          | `clinic_ai_platform_user2`: `role=clinic_ai_platform_user`; database: `TimeZone=utc`            |
+| Session defaults                  | `read committed`, not read only, `createrole_self_grant` empty, no lock or statement timeout    |
+| Extensions                        | `btree_gist` 1.7, `pgcrypto` 1.3, `plpgsql` 1.0                                                 |
+
+The post-check's expected ACL strings for the new table and its columns, and the new column ACLs
+on `knowledge_documents`, come from applying this file to a cluster with exactly these facts; the
+grants that produce them are in 0020 itself (lines 91-93 and 138-143).
 
 Rulings applied (2026-10-25): any result other than `READY` stops before the apply; any result
 other than `VERIFIED` stops P1 and blocks #111 (Q4); PITR is not relied on (Q3) — a failure before
@@ -69,7 +94,13 @@ then check it with `sha256sum -c`. Any mismatch stops here.
 
 Confirm on `clinic-ai-db` that point-in-time recovery is enabled, and note the time. Change nothing.
 
-## 1. URL guard (after `read -rs DATABASE_URL && export DATABASE_URL PGSSLMODE=require`)
+## 1. URL guard (after `read -rs DATABASE_URL && export DATABASE_URL PGSSLMODE=verify-full PGSSLROOTCERT=system`)
+
+`verify-full` with the system trust store checks that the server certificate chains to a trusted
+CA and matches the host name, not only that the connection is encrypted (`require`). It needs libpq
+16 or later for `sslrootcert=system`; the Owner's Termux psql is 18.6, and a read-only
+`verify-full` connection to production succeeded on 2026-10-25 (`TLSv1.3`). If it fails with a
+certificate error, stop; do not fall back to `require` without a separate Owner decision.
 
 Accepts only the External Database URL of the production database (full host name and database
 name) with the login `clinic_ai_platform_user2`; anything else is unset. The Internal Database URL
@@ -104,6 +135,8 @@ psql "$DATABASE_URL" <<'SQL'
 BEGIN TRANSACTION READ ONLY;
 SELECT CASE WHEN (SELECT count(*) FROM schema_migrations) = 19
              AND (SELECT max(id) FROM schema_migrations) = '0019_owner_role_no_inherit.sql'
+             AND (SELECT pg_catalog.md5(pg_catalog.string_agg(id, ',' ORDER BY id COLLATE "C")) FROM schema_migrations)
+                 = 'd2fa84678c8a8b827c15265703e45163'
              AND NOT EXISTS (SELECT 1 FROM schema_migrations WHERE id = '0020_knowledge_document_chunks.sql')
              AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'knowledge_document_processor')
              AND pg_catalog.to_regclass('public.knowledge_document_chunks') IS NULL
@@ -112,11 +145,20 @@ SELECT CASE WHEN (SELECT count(*) FROM schema_migrations) = 19
              AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_constraint WHERE conname = 'knowledge_documents_id_key')
              AND pg_catalog.current_setting('server_encoding') = 'UTF8'
              AND current_user = 'clinic_ai_platform_user'
+             AND session_user = 'clinic_ai_platform_user2'
+             AND COALESCE((SELECT s.ssl FROM pg_catalog.pg_stat_ssl s WHERE s.pid = pg_catalog.pg_backend_pid()), false)
              AND NOT (SELECT rolsuper OR rolbypassrls FROM pg_catalog.pg_roles WHERE rolname = current_user)
              AND NOT (SELECT bool_or(pg_catalog.pg_has_role(current_user, t, 'USAGE'))
                         FROM unnest(ARRAY['auth_bootstrap','clinic_settings_writer','invitation_acceptor']) t)
+             AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_event_trigger)
+             AND COALESCE((SELECT relacl::text FROM pg_catalog.pg_class WHERE oid = 'public.knowledge_documents'::regclass), 'NULL')
+                 = '{clinic_ai_platform_user=arwdDxt/clinic_ai_platform_user,app_user=ar/clinic_ai_platform_user}'
+             AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_attribute
+                              WHERE attrelid = 'public.knowledge_documents'::regclass AND attacl IS NOT NULL)
              AND COALESCE((SELECT pg_catalog.string_agg(pg_catalog.pg_get_userbyid(d.defaclrole) || '|' || d.defaclnamespace::text
-                                     || '|' || d.defaclobjtype::text || '|' || d.defaclacl::text, ';' ORDER BY d.defaclobjtype::text COLLATE "C")
+                                     || '|' || d.defaclobjtype::text || '|' || d.defaclacl::text, ';'
+                                     ORDER BY pg_catalog.pg_get_userbyid(d.defaclrole)::text COLLATE "C", d.defaclnamespace,
+                                              d.defaclobjtype::text COLLATE "C", d.defaclacl::text COLLATE "C")
                              FROM pg_catalog.pg_default_acl d), '')
                  = 'postgres|0|S|{postgres=rwU/postgres,clinic_ai_platform_user=rwU/postgres};postgres|0|T|{=U/postgres,postgres=U/postgres,clinic_ai_platform_user=U/postgres};postgres|0|f|{=X/postgres,postgres=X/postgres,clinic_ai_platform_user=X/postgres};postgres|0|r|{postgres=arwdDxt/postgres,clinic_ai_platform_user=arwdDxt/postgres}'
              AND (SELECT count(*) FROM pg_catalog.pg_proc p
@@ -126,6 +168,7 @@ SELECT CASE WHEN (SELECT count(*) FROM schema_migrations) = 19
                                 AND pg_catalog.has_function_privilege('public', p.oid, 'EXECUTE'))
             THEN 'READY' ELSE 'STOP' END AS decision,
        current_user AS who,
+       session_user AS login,
        pg_catalog.current_database() AS database,
        pg_catalog.current_setting('server_encoding') AS encoding,
        (SELECT count(*) FROM schema_migrations) AS migrations,
@@ -175,6 +218,8 @@ WITH f AS (
     (SELECT count(*) FROM schema_migrations) = 20
       AND (SELECT max(id) FROM schema_migrations) = '0020_knowledge_document_chunks.sql'
       AND (SELECT count(*) FROM schema_migrations WHERE id = '0020_knowledge_document_chunks.sql') = 1
+      AND (SELECT pg_catalog.md5(pg_catalog.string_agg(id, ',' ORDER BY id COLLATE "C")) FROM schema_migrations)
+          = '0763e669b8d4c4a569f1ebe85c48c0a4'
       AS migrations_ok,
     (SELECT NOT (rolcanlogin OR rolsuper OR rolbypassrls OR rolcreaterole OR rolcreatedb)
        FROM pg_catalog.pg_roles WHERE rolname = 'knowledge_document_processor')
@@ -193,11 +238,33 @@ WITH f AS (
               AND policyname = 'tenant_isolation') = 1
       AND (SELECT count(*) FROM pg_catalog.pg_policies
             WHERE schemaname = 'public' AND tablename = 'knowledge_document_chunks') = 1
+      AND COALESCE((SELECT pol.polcmd::text || '|' || pol.polpermissive::text || '|' || pol.polroles::text || '|'
+                           || pg_catalog.pg_get_expr(pol.polqual, pol.polrelid) || '|'
+                           || pg_catalog.pg_get_expr(pol.polwithcheck, pol.polrelid)
+                      FROM pg_catalog.pg_policy pol
+                     WHERE pol.polrelid = 'public.knowledge_document_chunks'::regclass
+                       AND pol.polname = 'tenant_isolation'), 'NULL')
+          = '*|true|{0}|(clinic_id = (current_setting(''app.current_clinic_id''::text, true))::uuid)|(clinic_id = (current_setting(''app.current_clinic_id''::text, true))::uuid)'
       AS rls_ok,
     pg_catalog.has_table_privilege('app_user', 'public.knowledge_document_chunks', 'SELECT')
       AND NOT pg_catalog.has_table_privilege('app_user', 'public.knowledge_document_chunks', 'INSERT, UPDATE, DELETE, TRUNCATE')
       AND NOT pg_catalog.has_table_privilege('app_user', 'public.knowledge_documents', 'UPDATE, DELETE, TRUNCATE')
       AS app_user_ok,
+    COALESCE((SELECT relacl::text FROM pg_catalog.pg_class WHERE oid = 'public.knowledge_document_chunks'::regclass), 'NULL')
+        = '{clinic_ai_platform_user=arwdDxt/clinic_ai_platform_user,app_user=r/clinic_ai_platform_user}'
+      AND COALESCE((SELECT relacl::text FROM pg_catalog.pg_class WHERE oid = 'public.knowledge_documents'::regclass), 'NULL')
+        = '{clinic_ai_platform_user=arwdDxt/clinic_ai_platform_user,app_user=ar/clinic_ai_platform_user}'
+      AND COALESCE((SELECT pg_catalog.string_agg(attname || '=' || attacl::text, ' ' ORDER BY attnum) FROM pg_catalog.pg_attribute
+                     WHERE attrelid = 'public.knowledge_document_chunks'::regclass AND attacl IS NOT NULL), 'NULL')
+        = 'clinic_id={knowledge_document_processor=ar/clinic_ai_platform_user} document_id={knowledge_document_processor=ar/clinic_ai_platform_user} ordinal={knowledge_document_processor=a/clinic_ai_platform_user} content={knowledge_document_processor=a/clinic_ai_platform_user} char_start={knowledge_document_processor=a/clinic_ai_platform_user} char_end={knowledge_document_processor=a/clinic_ai_platform_user} extractor_version={knowledge_document_processor=a/clinic_ai_platform_user} canonicalization_version={knowledge_document_processor=a/clinic_ai_platform_user}'
+      AND COALESCE((SELECT pg_catalog.string_agg(attname || '=' || attacl::text, ' ' ORDER BY attnum) FROM pg_catalog.pg_attribute
+                     WHERE attrelid = 'public.knowledge_documents'::regclass AND attacl IS NOT NULL), 'NULL')
+        = 'id={knowledge_document_processor=r/clinic_ai_platform_user} clinic_id={knowledge_document_processor=r/clinic_ai_platform_user} status={knowledge_document_processor=rw/clinic_ai_platform_user} failed_reason={knowledge_document_processor=w/clinic_ai_platform_user}'
+      AND NOT pg_catalog.has_table_privilege('public', 'public.knowledge_document_chunks',
+                                             'SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER')
+      AND NOT pg_catalog.has_any_column_privilege('public', 'public.knowledge_document_chunks', 'SELECT, INSERT, UPDATE, REFERENCES')
+      AND NOT pg_catalog.has_any_column_privilege('public', 'public.knowledge_documents', 'SELECT, INSERT, UPDATE, REFERENCES')
+      AS table_acl_ok,
     EXISTS (SELECT 1 FROM pg_catalog.pg_constraint WHERE conname = 'knowledge_documents_id_key')
       AND EXISTS (SELECT 1 FROM pg_catalog.pg_constraint WHERE conname = 'knowledge_document_chunks_document_same_clinic')
       AS constraints_ok,
@@ -216,16 +283,20 @@ WITH f AS (
                               OR NOT pg_catalog.has_function_privilege('app_user', p.oid, 'EXECUTE')))
       AS all_secdef_ok,
     COALESCE((SELECT pg_catalog.string_agg(pg_catalog.pg_get_userbyid(d.defaclrole) || '|' || d.defaclnamespace::text
-                     || '|' || d.defaclobjtype::text || '|' || d.defaclacl::text, ';' ORDER BY d.defaclobjtype::text COLLATE "C")
+                     || '|' || d.defaclobjtype::text || '|' || d.defaclacl::text, ';'
+                     ORDER BY pg_catalog.pg_get_userbyid(d.defaclrole)::text COLLATE "C", d.defaclnamespace,
+                              d.defaclobjtype::text COLLATE "C", d.defaclacl::text COLLATE "C")
                FROM pg_catalog.pg_default_acl d), '')
       = 'postgres|0|S|{postgres=rwU/postgres,clinic_ai_platform_user=rwU/postgres};postgres|0|T|{=U/postgres,postgres=U/postgres,clinic_ai_platform_user=U/postgres};postgres|0|f|{=X/postgres,postgres=X/postgres,clinic_ai_platform_user=X/postgres};postgres|0|r|{postgres=arwdDxt/postgres,clinic_ai_platform_user=arwdDxt/postgres}'
+      AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_event_trigger)
       AS default_acl_ok,
     (SELECT count(*) FROM public.knowledge_document_chunks) = 0 AS chunks_empty
 )
-SELECT CASE WHEN migrations_ok AND role_ok AND memberships_ok AND rls_ok AND app_user_ok
-                 AND constraints_ok AND functions_ok AND all_secdef_ok AND default_acl_ok AND chunks_empty
+SELECT CASE WHEN COALESCE(migrations_ok AND role_ok AND memberships_ok AND rls_ok AND app_user_ok
+                          AND table_acl_ok AND constraints_ok AND functions_ok AND all_secdef_ok
+                          AND default_acl_ok AND chunks_empty, false)
             THEN 'VERIFIED' ELSE 'NOT VERIFIED' END AS result,
-       migrations_ok, role_ok, memberships_ok, rls_ok, app_user_ok, constraints_ok,
+       migrations_ok, role_ok, memberships_ok, rls_ok, app_user_ok, table_acl_ok, constraints_ok,
        functions_ok, all_secdef_ok, default_acl_ok, chunks_empty
   FROM c;
 ROLLBACK;
@@ -235,7 +306,7 @@ SQL
 ## 5. Clean up
 
 ```sh
-unset DATABASE_URL PGSSLMODE && cd ~ && rm -rf ~/c20 && echo CLEARED
+unset DATABASE_URL PGSSLMODE PGSSLROOTCERT && cd ~ && rm -rf ~/c20 && echo CLEARED
 ```
 
 ## Rehearsal (2026-10-25, fresh production-shaped PostgreSQL 16 cluster)
@@ -306,6 +377,46 @@ lock timeout` after 5 s, exit 3; the pre-check still said `READY`.
   `postgres` rows did not reach the objects 0020 created.
 - A default privilege added for `knowledge_document_processor` after the apply: `NOT VERIFIED`
   (`default_acl_ok` false); removed again: `VERIFIED`.
+- Pre-check after the apply: `STOP`. `knowledge_document_chunks` is owned by
+  `clinic_ai_platform_user`; `clinic_ai_platform_user2` has no `USAGE` on
+  `knowledge_document_processor`.
+
+## Fourth rehearsal (2026-10-25, checks from the production facts, verify-full TLS)
+
+Review by the external architect (2026-10-25) asked for: exact table and column ACL checks on the
+new table (`table_acl_ok`), PUBLIC checked explicitly, NULL-safe comparisons, a deterministic order
+for the default-privilege rows, production facts read before being written into a check, and server
+identity verified rather than only encrypted. This rehearsal covers those changes, from the blocks
+of this file. Note that `default_acl_ok` also requires that no event trigger exists.
+
+Cluster: fresh PostgreSQL 16.15 with TLS on (a private CA; the server certificate names
+`localhost`), connected with `PGSSLMODE=verify-full` and `PGSSLROOTCERT` set to that CA (production
+uses `system`). It was set up with the production facts above: the rotated login, the memberships,
+`TimeZone=utc` on the database, and Render's four rows created in a different order from the
+comparison order. Migrations 0001-0019 ran through the repository runner over `verify-full`. The
+resulting server version, TLS version, migration-id `md5`, `knowledge_documents` ACL, event
+triggers and extensions matched production.
+
+- Pre-check: `READY` (`who = clinic_ai_platform_user`, `login = clinic_ai_platform_user2`).
+- Pre-check `STOP` for each of: no TLS (`sslmode=disable`); an event trigger; PUBLIC `SELECT` on
+  `knowledge_documents`; a column grant on `knowledge_documents`; one migration id changed (count and
+  maximum unchanged); a default privilege for `clinic_ai_platform_user`. A `verify-full` connection
+  that trusted only the system store was refused (`certificate verify failed`). Each change was
+  undone and the pre-check said `READY` again.
+- Apply while another session held a lock on `knowledge_documents`: `canceling statement due to
+lock timeout` after 5 s, exit 3; the pre-check still said `READY`.
+- Apply: `who = clinic_ai_platform_user`, `INSERT 0 1`, `COMMIT`, exit 0, no warnings. Post-check:
+  `VERIFIED`, every column true.
+- Post-check `NOT VERIFIED` for each of: PUBLIC `SELECT` on `knowledge_document_chunks`,
+  `UPDATE (content)` on it for `app_user`, PUBLIC `SELECT (status)` on `knowledge_documents`, and
+  `INSERT` on the new table for `clinic_ai_platform_user2` (each `table_acl_ok` false); the policy
+  changed to `USING (true)` (`rls_ok` false); an event trigger (`default_acl_ok` false). With
+  `knowledge_document_processor` renamed, the post-check stopped with `ERROR: role
+"knowledge_document_processor" does not exist` and printed no result (exit 3). Each change was
+  undone and the post-check said `VERIFIED` again.
+- NULL handling: every compared catalog value is wrapped in `COALESCE` (`'NULL'` or `false`) and the
+  overall result is `COALESCE(..., false)`, so a missing value can only give `STOP` or
+  `NOT VERIFIED`, never `READY` or `VERIFIED`.
 - Pre-check after the apply: `STOP`. `knowledge_document_chunks` is owned by
   `clinic_ai_platform_user`; `clinic_ai_platform_user2` has no `USAGE` on
   `knowledge_document_processor`.

@@ -26,6 +26,27 @@ block and the post-check check and use the executing role `clinic_ai_platform_us
 Objects created by 0020 are owned by `clinic_ai_platform_user`, like every other object. If the pre-check
 does not show `who = clinic_ai_platform_user`, it prints `STOP`.
 
+## Render's default privileges
+
+Production's `pg_default_acl` is not empty. A read-only check on 2026-10-25 showed exactly four
+rows, all for objects created by `postgres` in any schema (`defaclnamespace = 0`), set by Render:
+
+| Object type     | `defaclacl`                                                            |
+| --------------- | ---------------------------------------------------------------------- |
+| `r` (tables)    | `{postgres=arwdDxt/postgres,clinic_ai_platform_user=arwdDxt/postgres}` |
+| `S` (sequences) | `{postgres=rwU/postgres,clinic_ai_platform_user=rwU/postgres}`         |
+| `f` (functions) | `{=X/postgres,postgres=X/postgres,clinic_ai_platform_user=X/postgres}` |
+| `T` (types)     | `{=U/postgres,postgres=U/postgres,clinic_ai_platform_user=U/postgres}` |
+
+Default privileges apply only to objects created by the role they belong to (`defaclrole`). 0020
+creates its objects as `clinic_ai_platform_user`, so these rows do not touch them; the post-check
+still verifies every resulting privilege exactly. The pre-check and the post-check therefore require
+`pg_default_acl` to hold exactly these four rows and nothing else: a default privilege for any other
+role (`clinic_ai_platform_user`, `knowledge_document_processor` or another) or any change to
+Render's rows prints `STOP` / `NOT VERIFIED`. The first version of this file required the table to
+be empty, which held in the rehearsal clusters but not in production, so the pre-check of
+2026-10-25 printed `STOP` (all its other conditions were true) and nothing was applied.
+
 Rulings applied (2026-10-25): any result other than `READY` stops before the apply; any result
 other than `VERIFIED` stops P1 and blocks #111 (Q4); PITR is not relied on (Q3) — a failure before
 `COMMIT` rolls the whole transaction back, and a problem after `COMMIT` gets a separate Owner
@@ -94,7 +115,10 @@ SELECT CASE WHEN (SELECT count(*) FROM schema_migrations) = 19
              AND NOT (SELECT rolsuper OR rolbypassrls FROM pg_catalog.pg_roles WHERE rolname = current_user)
              AND NOT (SELECT bool_or(pg_catalog.pg_has_role(current_user, t, 'USAGE'))
                         FROM unnest(ARRAY['auth_bootstrap','clinic_settings_writer','invitation_acceptor']) t)
-             AND (SELECT count(*) FROM pg_catalog.pg_default_acl) = 0
+             AND COALESCE((SELECT pg_catalog.string_agg(pg_catalog.pg_get_userbyid(d.defaclrole) || '|' || d.defaclnamespace::text
+                                     || '|' || d.defaclobjtype::text || '|' || d.defaclacl::text, ';' ORDER BY d.defaclobjtype::text COLLATE "C")
+                             FROM pg_catalog.pg_default_acl d), '')
+                 = 'postgres|0|S|{postgres=rwU/postgres,clinic_ai_platform_user=rwU/postgres};postgres|0|T|{=U/postgres,postgres=U/postgres,clinic_ai_platform_user=U/postgres};postgres|0|f|{=X/postgres,postgres=X/postgres,clinic_ai_platform_user=X/postgres};postgres|0|r|{postgres=arwdDxt/postgres,clinic_ai_platform_user=arwdDxt/postgres}'
              AND (SELECT count(*) FROM pg_catalog.pg_proc p
                    WHERE p.prosecdef AND p.pronamespace = 'public'::regnamespace) = 4
              AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_proc p
@@ -191,7 +215,11 @@ WITH f AS (
                          AND (pg_catalog.has_function_privilege('public', p.oid, 'EXECUTE')
                               OR NOT pg_catalog.has_function_privilege('app_user', p.oid, 'EXECUTE')))
       AS all_secdef_ok,
-    (SELECT count(*) FROM pg_catalog.pg_default_acl) = 0 AS default_acl_ok,
+    COALESCE((SELECT pg_catalog.string_agg(pg_catalog.pg_get_userbyid(d.defaclrole) || '|' || d.defaclnamespace::text
+                     || '|' || d.defaclobjtype::text || '|' || d.defaclacl::text, ';' ORDER BY d.defaclobjtype::text COLLATE "C")
+               FROM pg_catalog.pg_default_acl d), '')
+      = 'postgres|0|S|{postgres=rwU/postgres,clinic_ai_platform_user=rwU/postgres};postgres|0|T|{=U/postgres,postgres=U/postgres,clinic_ai_platform_user=U/postgres};postgres|0|f|{=X/postgres,postgres=X/postgres,clinic_ai_platform_user=X/postgres};postgres|0|r|{postgres=arwdDxt/postgres,clinic_ai_platform_user=arwdDxt/postgres}'
+      AS default_acl_ok,
     (SELECT count(*) FROM public.knowledge_document_chunks) = 0 AS chunks_empty
 )
 SELECT CASE WHEN migrations_ok AND role_ok AND memberships_ok AND rls_ok AND app_user_ok
@@ -255,3 +283,29 @@ lock timeout` after 5 s, exit 3; the pre-check still said `READY`.
   `VERIFIED`, every column true.
 - After the apply: `knowledge_document_chunks` is owned by `clinic_ai_platform_user`;
   `clinic_ai_platform_user2` has no `USAGE` on `knowledge_document_processor`.
+
+The second production attempt (2026-10-25, from main `110fcc6`) passed the URL guard and stopped at
+the pre-check on its default-privilege condition (see "Render's default privileges"); a read-only
+diagnostic showed every other condition true. Nothing was applied.
+
+## Third rehearsal (2026-10-25, Render's default privileges)
+
+As the second rehearsal, plus Render's four `pg_default_acl` rows recreated by `postgres` with
+`ALTER DEFAULT PRIVILEGES` (their text matched the production rows exactly), then the blocks of
+this file:
+
+- The previous pre-check (empty `pg_default_acl`) on this cluster: `STOP`, as in production.
+- Pre-check: `READY`, `who = clinic_ai_platform_user`.
+- Pre-check `STOP` for each of: a default privilege added for `clinic_ai_platform_user`; Render's
+  function row changed (PUBLIC `EXECUTE` revoked); Render's type row changed; a schema-scoped
+  default privilege added for `postgres`. Each was undone and the pre-check said `READY` again.
+- Apply while another session held a lock on `knowledge_documents`: `canceling statement due to
+lock timeout` after 5 s, exit 3; the pre-check still said `READY`.
+- Apply: `who = clinic_ai_platform_user`, `INSERT 0 1`, `COMMIT`, exit 0, no warnings. Post-check:
+  `VERIFIED`, every column true, including `functions_ok` (the exact function ACLs), so Render's
+  `postgres` rows did not reach the objects 0020 created.
+- A default privilege added for `knowledge_document_processor` after the apply: `NOT VERIFIED`
+  (`default_acl_ok` false); removed again: `VERIFIED`.
+- Pre-check after the apply: `STOP`. `knowledge_document_chunks` is owned by
+  `clinic_ai_platform_user`; `clinic_ai_platform_user2` has no `USAGE` on
+  `knowledge_document_processor`.

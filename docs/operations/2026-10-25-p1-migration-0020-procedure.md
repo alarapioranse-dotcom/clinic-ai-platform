@@ -277,12 +277,23 @@ WITH f AS (
                      WHERE con.conrelid = 'public.knowledge_documents'::regclass
                        AND con.conname = 'knowledge_documents_id_key'), 'NULL')
         = 'u:true:UNIQUE (id, clinic_id)'
-      AND COALESCE((SELECT pg_catalog.string_agg(pg_catalog.pg_get_indexdef(i.indexrelid), ' ; '
+      AND COALESCE((SELECT pg_catalog.string_agg(pg_catalog.pg_get_indexdef(i.indexrelid) || ':' || i.indisvalid::text
+                                                 || ':' || i.indisready::text || ':' || i.indislive::text, ' ; '
                                                  ORDER BY pg_catalog.pg_get_indexdef(i.indexrelid) COLLATE "C")
                       FROM pg_catalog.pg_index i
                      WHERE i.indrelid = 'public.knowledge_document_chunks'::regclass), 'NULL')
-        = 'CREATE INDEX knowledge_document_chunks_clinic_id_idx ON public.knowledge_document_chunks USING btree (clinic_id) ; CREATE UNIQUE INDEX knowledge_document_chunks_document_ordinal_key ON public.knowledge_document_chunks USING btree (document_id, ordinal) ; CREATE UNIQUE INDEX knowledge_document_chunks_pkey ON public.knowledge_document_chunks USING btree (id)'
+        = 'CREATE INDEX knowledge_document_chunks_clinic_id_idx ON public.knowledge_document_chunks USING btree (clinic_id):true:true:true ; CREATE UNIQUE INDEX knowledge_document_chunks_document_ordinal_key ON public.knowledge_document_chunks USING btree (document_id, ordinal):true:true:true ; CREATE UNIQUE INDEX knowledge_document_chunks_pkey ON public.knowledge_document_chunks USING btree (id):true:true:true'
       AS constraints_ok,
+    COALESCE((SELECT pg_catalog.string_agg(t.tgisinternal::text || ':' || COALESCE(con.conname, '-') || ':' || p.proname
+                                           || ':' || t.tgtype::text || ':' || t.tgenabled::text, ' ; '
+                                           ORDER BY COALESCE(con.conname, '-') COLLATE "C", p.proname COLLATE "C", t.tgtype)
+                FROM pg_catalog.pg_trigger t
+                JOIN pg_catalog.pg_proc p ON p.oid = t.tgfoid
+                LEFT JOIN pg_catalog.pg_constraint con ON con.oid = t.tgconstraint
+               WHERE t.tgrelid = 'public.knowledge_document_chunks'::regclass), 'none')
+        = 'true:knowledge_document_chunks_clinic_id_fkey:RI_FKey_check_ins:5:O ; true:knowledge_document_chunks_clinic_id_fkey:RI_FKey_check_upd:17:O ; true:knowledge_document_chunks_document_same_clinic:RI_FKey_check_ins:5:O ; true:knowledge_document_chunks_document_same_clinic:RI_FKey_check_upd:17:O'
+      AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_rewrite WHERE ev_class = 'public.knowledge_document_chunks'::regclass)
+      AS triggers_rules_ok,
     COALESCE((SELECT pg_catalog.pg_get_userbyid(relowner) || ':' || relkind::text || ':' || relpersistence::text
                 FROM pg_catalog.pg_class WHERE oid = 'public.knowledge_document_chunks'::regclass), 'NULL')
         = 'clinic_ai_platform_user:r:p'
@@ -323,11 +334,11 @@ WITH f AS (
     (SELECT count(*) FROM public.knowledge_document_chunks) = 0 AS chunks_empty
 )
 SELECT CASE WHEN COALESCE(migrations_ok AND role_ok AND memberships_ok AND rls_ok AND app_user_ok
-                          AND table_acl_ok AND constraints_ok AND schema_ok AND functions_ok AND all_secdef_ok
-                          AND default_acl_ok AND chunks_empty, false)
+                          AND table_acl_ok AND constraints_ok AND triggers_rules_ok AND schema_ok AND functions_ok
+                          AND all_secdef_ok AND default_acl_ok AND chunks_empty, false)
             THEN 'VERIFIED' ELSE 'NOT VERIFIED' END AS result,
        migrations_ok, role_ok, memberships_ok, rls_ok, app_user_ok, table_acl_ok, constraints_ok,
-       schema_ok, functions_ok, all_secdef_ok, default_acl_ok, chunks_empty
+       triggers_rules_ok, schema_ok, functions_ok, all_secdef_ok, default_acl_ok, chunks_empty
   FROM c;
 ROLLBACK;
 SQL
@@ -504,3 +515,36 @@ the harness, not the checks: undoing an ownership change (`OWNER TO app_user` an
 `app_user`'s grants, and the harness did not restore them. The checks correctly reported that
 state. The cluster was rebuilt, the undo now restores the grants and each undo is confirmed, and
 only that run is reported above.
+
+## Sixth rehearsal (2026-10-25, index validity, triggers and rules)
+
+The architect's review of `a8cb1e8` (GO WITH CONDITIONS) asked for two more checks before merging:
+
+- `constraints_ok` now also requires `indisvalid`, `indisready` and `indislive` for each of the
+  three indexes on the new table.
+- A new column, `triggers_rules_ok`, requires that the triggers on `knowledge_document_chunks` are
+  exactly the four internal ones its two foreign keys create, each enabled (`O`):
+  `RI_FKey_check_ins` and `RI_FKey_check_upd` for `knowledge_document_chunks_clinic_id_fkey` and
+  for `knowledge_document_chunks_document_same_clinic`. They are compared by constraint, function,
+  type and enabled state, not by name, because PostgreSQL names internal triggers by OID. No
+  rewrite rule may exist on the table.
+
+Known limitation: the post-check proves the state at the moment it runs. It cannot stop a later
+session with enough privileges from changing the database afterwards.
+
+Setup: same as the fifth rehearsal, on a cluster rebuilt from scratch, with the blocks of this
+file. After every negative case the change was undone, and the check was rerun to confirm `READY` /
+`VERIFIED` before the next case.
+
+- Pre-check `READY`, and `STOP` for every pre-check case of the earlier rehearsals.
+- Apply under a held lock: cancelled, nothing changed. Apply: `INSERT 0 1`, `COMMIT`, exit 0, no
+  warnings. Post-check `VERIFIED`, all 13 columns true.
+- Every earlier post-check negative case: `NOT VERIFIED`, or an `ERROR` with no result.
+- New cases, each `NOT VERIFIED`:
+  - `constraints_ok` false: `indisvalid` false on the primary-key index; `indisready` false on the
+    unique index; `indislive` false on the `clinic_id` index.
+  - `triggers_rules_ok` false: an ordinary `BEFORE INSERT` trigger; the same trigger added and then
+    disabled; the foreign keys' internal triggers disabled (`DISABLE TRIGGER ALL`); a rule
+    `ON INSERT DO INSTEAD NOTHING`; a rule `ON DELETE DO ALSO NOTHING`.
+  - Dropping the same-clinic foreign key now also sets `triggers_rules_ok` false.
+- Post-check at the end: `VERIFIED`. Pre-check after the apply: `STOP`.

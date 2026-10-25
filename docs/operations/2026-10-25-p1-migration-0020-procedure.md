@@ -207,6 +207,8 @@ psql "$DATABASE_URL" <<'SQL'
 \set ON_ERROR_STOP on
 \pset pager off
 BEGIN TRANSACTION READ ONLY;
+-- Pins the names pg_get_constraintdef prints (production's session default is "$user", public).
+SET LOCAL search_path = public;
 WITH f AS (
   SELECT p.proname, pg_catalog.pg_get_userbyid(p.proowner) AS owner, p.prosecdef, p.proconfig,
          p.proacl::text AS acl, pg_catalog.md5(p.prosrc) AS body
@@ -265,9 +267,37 @@ WITH f AS (
       AND NOT pg_catalog.has_any_column_privilege('public', 'public.knowledge_document_chunks', 'SELECT, INSERT, UPDATE, REFERENCES')
       AND NOT pg_catalog.has_any_column_privilege('public', 'public.knowledge_documents', 'SELECT, INSERT, UPDATE, REFERENCES')
       AS table_acl_ok,
-    EXISTS (SELECT 1 FROM pg_catalog.pg_constraint WHERE conname = 'knowledge_documents_id_key')
-      AND EXISTS (SELECT 1 FROM pg_catalog.pg_constraint WHERE conname = 'knowledge_document_chunks_document_same_clinic')
+    COALESCE((SELECT pg_catalog.string_agg(con.conname || ':' || con.contype::text || ':' || con.convalidated::text || ':'
+                                           || pg_catalog.pg_get_constraintdef(con.oid), ' ; ' ORDER BY con.conname::text COLLATE "C")
+                FROM pg_catalog.pg_constraint con
+               WHERE con.conrelid = 'public.knowledge_document_chunks'::regclass), 'NULL')
+        = 'knowledge_document_chunk_content_matches_range:c:true:CHECK (((char_end - char_start) = length(content))) ; knowledge_document_chunk_max_length:c:true:CHECK (((char_end - char_start) <= 2000)) ; knowledge_document_chunk_range_nonempty:c:true:CHECK ((char_end > char_start)) ; knowledge_document_chunk_versions_present:c:true:CHECK (((btrim(extractor_version) <> ''''::text) AND (length(extractor_version) <= 100) AND (btrim(canonicalization_version) <> ''''::text) AND (length(canonicalization_version) <= 100))) ; knowledge_document_chunks_char_start_check:c:true:CHECK ((char_start >= 0)) ; knowledge_document_chunks_clinic_id_fkey:f:true:FOREIGN KEY (clinic_id) REFERENCES clinics(id) ; knowledge_document_chunks_document_ordinal_key:u:true:UNIQUE (document_id, ordinal) ; knowledge_document_chunks_document_same_clinic:f:true:FOREIGN KEY (document_id, clinic_id) REFERENCES knowledge_documents(id, clinic_id) ON DELETE CASCADE ; knowledge_document_chunks_ordinal_check:c:true:CHECK ((ordinal >= 0)) ; knowledge_document_chunks_pkey:p:true:PRIMARY KEY (id)'
+      AND COALESCE((SELECT con.contype::text || ':' || con.convalidated::text || ':' || pg_catalog.pg_get_constraintdef(con.oid)
+                      FROM pg_catalog.pg_constraint con
+                     WHERE con.conrelid = 'public.knowledge_documents'::regclass
+                       AND con.conname = 'knowledge_documents_id_key'), 'NULL')
+        = 'u:true:UNIQUE (id, clinic_id)'
+      AND COALESCE((SELECT pg_catalog.string_agg(pg_catalog.pg_get_indexdef(i.indexrelid), ' ; '
+                                                 ORDER BY pg_catalog.pg_get_indexdef(i.indexrelid) COLLATE "C")
+                      FROM pg_catalog.pg_index i
+                     WHERE i.indrelid = 'public.knowledge_document_chunks'::regclass), 'NULL')
+        = 'CREATE INDEX knowledge_document_chunks_clinic_id_idx ON public.knowledge_document_chunks USING btree (clinic_id) ; CREATE UNIQUE INDEX knowledge_document_chunks_document_ordinal_key ON public.knowledge_document_chunks USING btree (document_id, ordinal) ; CREATE UNIQUE INDEX knowledge_document_chunks_pkey ON public.knowledge_document_chunks USING btree (id)'
       AS constraints_ok,
+    COALESCE((SELECT pg_catalog.pg_get_userbyid(relowner) || ':' || relkind::text || ':' || relpersistence::text
+                FROM pg_catalog.pg_class WHERE oid = 'public.knowledge_document_chunks'::regclass), 'NULL')
+        = 'clinic_ai_platform_user:r:p'
+      AND COALESCE((SELECT pg_catalog.pg_get_userbyid(relowner) FROM pg_catalog.pg_class
+                     WHERE oid = 'public.knowledge_documents'::regclass), 'NULL')
+        = 'clinic_ai_platform_user'
+      AND COALESCE((SELECT pg_catalog.string_agg(a.attname || ' ' || pg_catalog.format_type(a.atttypid, a.atttypmod)
+                                                 || CASE WHEN a.attnotnull THEN ' NOT NULL' ELSE '' END
+                                                 || COALESCE(' DEFAULT ' || pg_catalog.pg_get_expr(d.adbin, d.adrelid), ''),
+                                                 ', ' ORDER BY a.attnum)
+                      FROM pg_catalog.pg_attribute a
+                      LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+                     WHERE a.attrelid = 'public.knowledge_document_chunks'::regclass AND a.attnum > 0 AND NOT a.attisdropped), 'NULL')
+        = 'id uuid NOT NULL DEFAULT gen_random_uuid(), clinic_id uuid NOT NULL, document_id uuid NOT NULL, ordinal integer NOT NULL, content text NOT NULL, char_start integer NOT NULL, char_end integer NOT NULL, extractor_version text NOT NULL, canonicalization_version text NOT NULL, created_at timestamp with time zone NOT NULL DEFAULT now()'
+      AS schema_ok,
     (SELECT count(*) FROM f
       WHERE owner = 'knowledge_document_processor' AND prosecdef
         AND proconfig = ARRAY['search_path=pg_catalog, public, pg_temp']
@@ -293,11 +323,11 @@ WITH f AS (
     (SELECT count(*) FROM public.knowledge_document_chunks) = 0 AS chunks_empty
 )
 SELECT CASE WHEN COALESCE(migrations_ok AND role_ok AND memberships_ok AND rls_ok AND app_user_ok
-                          AND table_acl_ok AND constraints_ok AND functions_ok AND all_secdef_ok
+                          AND table_acl_ok AND constraints_ok AND schema_ok AND functions_ok AND all_secdef_ok
                           AND default_acl_ok AND chunks_empty, false)
             THEN 'VERIFIED' ELSE 'NOT VERIFIED' END AS result,
        migrations_ok, role_ok, memberships_ok, rls_ok, app_user_ok, table_acl_ok, constraints_ok,
-       functions_ok, all_secdef_ok, default_acl_ok, chunks_empty
+       schema_ok, functions_ok, all_secdef_ok, default_acl_ok, chunks_empty
   FROM c;
 ROLLBACK;
 SQL
@@ -420,3 +450,57 @@ lock timeout` after 5 s, exit 3; the pre-check still said `READY`.
 - Pre-check after the apply: `STOP`. `knowledge_document_chunks` is owned by
   `clinic_ai_platform_user`; `clinic_ai_platform_user2` has no `USAGE` on
   `knowledge_document_processor`.
+
+## Fifth rehearsal (2026-10-25, structural checks)
+
+The external architect's final review of #114 (GO WITH CONDITIONS) asked for structural checks
+before merging. `constraints_ok` had only checked that two constraint names existed somewhere.
+It now compares, exactly and per table:
+
+- every constraint on `knowledge_document_chunks` (name, type, `convalidated`,
+  `pg_get_constraintdef`);
+- `knowledge_documents_id_key` on `knowledge_documents`;
+- every index on the new table.
+
+A new `schema_ok` checks:
+
+- the owner, kind and persistence of the new table;
+- the owner of `knowledge_documents`;
+- the new table's exact column list: name, type, `NOT NULL`, default. A column without an ACL is now
+  detected.
+
+The expected strings come from applying 0020 on PostgreSQL 16.15, because these objects do not
+exist in production before P1. The post-check pins `search_path = public` for its own transaction,
+so `pg_get_constraintdef` prints names the same way as in that run.
+
+Same setup as the fourth rehearsal (TLS, `verify-full`, production facts), on a cluster rebuilt
+from scratch, with the blocks of this file. After every negative case the change was undone and
+the check was run again to confirm it was back to `READY` / `VERIFIED` before the next case.
+
+- Pre-check: `READY`, and `STOP` for each pre-check case of the fourth rehearsal.
+- Apply under a held lock: cancelled after 5 s, exit 3, the pre-check still `READY`. Apply:
+  `INSERT 0 1`, `COMMIT`, exit 0, no warnings. Post-check: `VERIFIED`, all 12 columns true.
+- Post-check `NOT VERIFIED` (or an `ERROR` with no result) for each case of the fourth rehearsal,
+  and for each of the following:
+  - `constraints_ok` false:
+    - a CHECK constraint dropped;
+    - a CHECK changed (2000 to 3000);
+    - a CHECK re-added `NOT VALID`;
+    - the same-clinic foreign key dropped and its name reused on another table;
+    - the foreign key without `ON DELETE CASCADE`;
+    - `knowledge_documents_id_key` redefined on other columns;
+    - an extra index.
+  - `schema_ok` false: a column added without an ACL; `NOT NULL` dropped; a default dropped; the
+    table made `UNLOGGED`.
+  - Both `constraints_ok` and `schema_ok` false: a column's type changed (`text` to
+    `varchar(100)`).
+  - `app_user_ok`, `table_acl_ok` and `schema_ok` false: the owner of `knowledge_documents`
+    changed.
+  - `ERROR: permission denied`, no result: the owner of the new table changed.
+- Pre-check after the apply: `STOP`.
+
+The first run of this rehearsal reported a final `NOT VERIFIED` after all its cases. The cause was
+the harness, not the checks: undoing an ownership change (`OWNER TO app_user` and back) drops
+`app_user`'s grants, and the harness did not restore them. The checks correctly reported that
+state. The cluster was rebuilt, the undo now restores the grants and each undo is confirmed, and
+only that run is reported above.

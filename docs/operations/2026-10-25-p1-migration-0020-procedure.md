@@ -252,6 +252,9 @@ WITH f AS (
       AND NOT pg_catalog.has_table_privilege('app_user', 'public.knowledge_document_chunks', 'INSERT, UPDATE, DELETE, TRUNCATE')
       AND NOT pg_catalog.has_table_privilege('app_user', 'public.knowledge_documents', 'UPDATE, DELETE, TRUNCATE')
       AS app_user_ok,
+    COALESCE((SELECT rolcanlogin AND NOT (rolsuper OR rolbypassrls OR rolcreaterole OR rolcreatedb)
+                FROM pg_catalog.pg_roles WHERE rolname = 'app_user'), false)
+      AS app_user_role_ok,
     COALESCE((SELECT relacl::text FROM pg_catalog.pg_class WHERE oid = 'public.knowledge_document_chunks'::regclass), 'NULL')
         = '{clinic_ai_platform_user=arwdDxt/clinic_ai_platform_user,app_user=r/clinic_ai_platform_user}'
       AND COALESCE((SELECT relacl::text FROM pg_catalog.pg_class WHERE oid = 'public.knowledge_documents'::regclass), 'NULL')
@@ -334,11 +337,11 @@ WITH f AS (
     (SELECT count(*) FROM public.knowledge_document_chunks) = 0 AS chunks_empty
 )
 SELECT CASE WHEN COALESCE(migrations_ok AND role_ok AND memberships_ok AND rls_ok AND app_user_ok
-                          AND table_acl_ok AND constraints_ok AND triggers_rules_ok AND schema_ok AND functions_ok
-                          AND all_secdef_ok AND default_acl_ok AND chunks_empty, false)
+                          AND app_user_role_ok AND table_acl_ok AND constraints_ok AND triggers_rules_ok AND schema_ok
+                          AND functions_ok AND all_secdef_ok AND default_acl_ok AND chunks_empty, false)
             THEN 'VERIFIED' ELSE 'NOT VERIFIED' END AS result,
-       migrations_ok, role_ok, memberships_ok, rls_ok, app_user_ok, table_acl_ok, constraints_ok,
-       triggers_rules_ok, schema_ok, functions_ok, all_secdef_ok, default_acl_ok, chunks_empty
+       migrations_ok, role_ok, memberships_ok, rls_ok, app_user_ok, app_user_role_ok, table_acl_ok,
+       constraints_ok, triggers_rules_ok, schema_ok, functions_ok, all_secdef_ok, default_acl_ok, chunks_empty
   FROM c;
 ROLLBACK;
 SQL
@@ -547,4 +550,34 @@ file. After every negative case the change was undone, and the check was rerun t
     disabled; the foreign keys' internal triggers disabled (`DISABLE TRIGGER ALL`); a rule
     `ON INSERT DO INSTEAD NOTHING`; a rule `ON DELETE DO ALSO NOTHING`.
   - Dropping the same-clinic foreign key now also sets `triggers_rules_ok` false.
+- Post-check at the end: `VERIFIED`. Pre-check after the apply: `STOP`.
+
+## Seventh rehearsal (2026-10-25, app_user role invariant)
+
+The architect's review of `f1afdfb` (GO WITH CONDITIONS) found that nothing in the post-check
+asserts that `app_user` cannot bypass row level security. A `BYPASSRLS` or superuser `app_user` could
+keep the expected table privileges, pass `rls_ok`, `app_user_ok` and `table_acl_ok`, and still
+ignore the tenant policy. This is a missing invariant in the runbook, not an observed production
+problem.
+
+The new column `app_user_role_ok` requires that `app_user` exists, can log in, and is not
+superuser, `BYPASSRLS`, `CREATEROLE` or `CREATEDB`. A missing role gives `false`. These are exactly
+the attributes read from production on 2026-10-25 (`login t`, all four others `f`), and
+migration 0002 creates the role `LOGIN NOSUPERUSER NOBYPASSRLS`. The column is part of the
+`COALESCE(..., false)` decision.
+
+Setup: the same as the sixth rehearsal, on a cluster rebuilt from scratch. The blocks were taken
+from this file; only the post-check differs from the sixth rehearsal. `app_user` had the same
+attributes as in production. After every negative case the change was undone, and the check was
+run again to confirm `VERIFIED` before the next case. All 48 cases gave the expected result on the
+first run.
+
+- Pre-check `READY`. Every pre-check case of the earlier rehearsals gave `STOP`.
+- Apply: `INSERT 0 1`, `COMMIT`, exit 0, no warnings.
+- Post-check `VERIFIED`, all 14 columns true.
+- `NOT VERIFIED` with `app_user_role_ok` false for each of: `app_user` `BYPASSRLS`, `SUPERUSER`
+  (also `app_user_ok` false), `CREATEROLE`, `CREATEDB`, `NOLOGIN`.
+- `app_user` renamed, so the role is missing: the post-check stopped with `ERROR: role "app_user"
+does not exist` and printed no result.
+- Every earlier post-check case: `NOT VERIFIED`, or an `ERROR` with no result.
 - Post-check at the end: `VERIFIED`. Pre-check after the apply: `STOP`.

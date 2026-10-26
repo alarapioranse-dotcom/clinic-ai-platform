@@ -118,14 +118,39 @@ POST /api/knowledge-documents/:id/complete
      (or shorter than 8 bytes), 409 object_changed on a failed precondition, 404 if the object
      vanished, 500 if HeadObject returned no ETag. No row created on failure.
   3. INSERT knowledge_documents (status = 'processing').  ─────► 201 returned to the caller
-     immediately; steps 4-6 below are a later slice's work, not yet implemented.
-  4. Extract text content from the file.
-  5. Split into retrieval-sized chunks and generate embeddings for each (see below).
-  6. On success: UPDATE knowledge_documents SET status = 'ready', ready_at = now()
-                 WHERE id = :id AND status = 'processing';
-     On failure: UPDATE knowledge_documents SET status = 'failed', failed_reason = :reason
-                 WHERE id = :id AND status = 'processing';
+     immediately; the route then schedules steps 4-5 with Next.js after() (ADR-0026).
+
+After the response (processKnowledgeDocument, one document at a time per process):
+  4a. Re-validate the object as it now stands: HeadObject (size <= 10 MiB, Content-Type
+      application/pdf, an ETag present), then a whole-object GET conditioned on If-Match with
+      that ETag and bounded by HeadObject's length, then the ADR-0021 signature check on the
+      bytes actually read.
+  4b. Extract the text in a worker_threads worker (PDF.js), canonicalise it (canon-1) and split
+      it into chunks (ADR-0026 sections 1, 2, 4 and 5).
+  4c. On success: store_knowledge_document_chunks(...) writes the whole chunk set; the document
+      stays 'processing' (Owner ruling D9).
+      On failure: mark_knowledge_document_failed(:id, :reason) with one closed reason code.
+      Both are tenant-bound SECURITY DEFINER functions (db/migrations/0020) that act only on a
+      'processing' document; a stale report (SQLSTATE 55000) is ignored, never overwritten.
+  5. Generate embeddings and move the document to 'ready': the embeddings slice, not yet
+     implemented (it needs an AI provider, ADR-0019).
 ```
+
+**Whole-object reads (Owner ruling G1, PR D).** [ADR-0018](../adr/0018-knowledge-document-object-storage.md)
+Decision 1 keeps uploads out of the Next.js process, and
+[ADR-0021](../adr/0021-bounded-prefix-read.md) allows only a 1024-byte prefix read at completion,
+adding that "any full-body read (extraction, download) requires its own decision".
+[ADR-0026](../adr/0026-knowledge-document-text-extraction-and-chunking.md) section 3 (Accepted) is
+that decision: after completion, the server reads the whole object (at most 10 MiB, bound to the
+HeadObject ETag) solely to extract its text. Uploads still never pass through the server; no other
+full read exists, and the bytes are never logged, persisted, returned to a client or sent to a
+third party. The read needs object-read permission on the application's storage key, which is
+still unverified in production (a documented gap, ruling G6).
+
+**What processing logs.** One line per document: its id and an outcome code (`stored`, a failure
+reason, `stale` or `unrecorded`) — never text, a filename, bytes, a storage key or an exception
+message (Owner ruling G4). If the process stops or the outcome cannot be recorded, the document
+stays `processing`; there is no automatic retry yet (ADR-0026 section 1).
 
 The `WHERE status = 'processing'` guard on both terminal updates is what keeps status
 "forward-only" (B, KnowledgeDocument aggregate invariant) true under retries: an async job that

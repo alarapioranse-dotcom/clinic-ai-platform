@@ -12,8 +12,13 @@ export const MAX_PAGES = 100;
 /** Counted in Unicode code points of the canonical text. */
 export const MAX_CANONICAL_CODE_POINTS = 500_000;
 export const WORKER_TIMEOUT_MS = 30_000;
-/** `resourceLimits.maxOldGenerationSizeMb` of the parsing worker. */
-export const WORKER_MAX_OLD_GENERATION_MB = 256;
+/**
+ * `resourceLimits.maxOldGenerationSizeMb` of the parsing worker. Owner ruling G2 (PR D): 128,
+ * down from ADR-0026's initial 256, because production runs on a 512 MB instance where the
+ * idle server alone uses about 137 MB; the highest worker heap measured on the fixtures was
+ * about 31 MiB.
+ */
+export const WORKER_MAX_OLD_GENERATION_MB = 128;
 
 /** Chunking (ADR-0026 section 5): target and hard maximum, in code points. */
 export const CHUNK_TARGET_CODE_POINTS = 1500;

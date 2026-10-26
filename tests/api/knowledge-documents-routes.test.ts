@@ -32,6 +32,24 @@ vi.mock('@/features/knowledge-base/storage', () => ({
   createPresignedUploadUrl: createPresignedUploadUrlMock,
 }));
 
+/**
+ * ADR-0026 (PR D): a successful completion schedules text extraction with
+ * Next.js `after()`. Outside a real Next request `after()` refuses to run, so
+ * it is replaced by a recorder, and processing itself is mocked here — its own
+ * behaviour is covered by tests/db/knowledge-document-processing.test.ts.
+ */
+const { afterMock, processKnowledgeDocumentMock } = vi.hoisted(() => ({
+  afterMock: vi.fn(),
+  processKnowledgeDocumentMock: vi.fn(),
+}));
+vi.mock('next/server', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('next/server')>()),
+  after: afterMock,
+}));
+vi.mock('@/features/knowledge-base/processing', () => ({
+  processKnowledgeDocument: processKnowledgeDocumentMock,
+}));
+
 const ETAG = '"9b2cf535f27731c974343645a3985328"';
 
 function pdfPrefix(version = '1.7'): { outcome: 'ok'; bytes: Uint8Array } {
@@ -285,6 +303,48 @@ describe('POST /api/knowledge-documents/:id/complete (completion)', () => {
   beforeEach(() => {
     headObjectMock.mockReset();
     readObjectPrefixMock.mockReset();
+    afterMock.mockReset();
+    processKnowledgeDocumentMock.mockReset();
+  });
+
+  it('schedules processing once, after a successful completion, for the session clinic and this document', async () => {
+    const clinic = await createTestClinic('KdocCompleteSchedules');
+    const token = await signInAs(clinic.id, 'KdocCompleteSchedules', 'owner');
+    const documentId = randomUUID();
+    headObjectMock.mockResolvedValueOnce({
+      contentLength: 2048,
+      contentType: 'application/pdf',
+      etag: ETAG,
+    });
+    readObjectPrefixMock.mockResolvedValueOnce(pdfPrefix());
+
+    const response = await complete(documentId, token, { filename: 'a.pdf' });
+
+    expect(response.status).toBe(201);
+    expect(afterMock).toHaveBeenCalledTimes(1);
+    // Nothing runs inside the request itself.
+    expect(processKnowledgeDocumentMock).not.toHaveBeenCalled();
+    const scheduled = afterMock.mock.calls[0]![0] as () => unknown;
+    await scheduled();
+    expect(processKnowledgeDocumentMock).toHaveBeenCalledTimes(1);
+    expect(processKnowledgeDocumentMock).toHaveBeenCalledWith(clinic.id, documentId);
+  });
+
+  it('schedules nothing when completion fails', async () => {
+    const clinic = await createTestClinic('KdocCompleteNoSchedule');
+    const token = await signInAs(clinic.id, 'KdocCompleteNoSchedule', 'owner');
+    headObjectMock.mockResolvedValueOnce(null);
+    expect((await complete(randomUUID(), token, { filename: 'a.pdf' })).status).toBe(404);
+
+    headObjectMock.mockResolvedValueOnce({
+      contentLength: 2048,
+      contentType: 'application/pdf',
+      etag: ETAG,
+    });
+    readObjectPrefixMock.mockResolvedValueOnce(prefixOf(0x50, 0x4b, 0x03, 0x04, 0, 0, 0, 0, 0));
+    expect((await complete(randomUUID(), token, { filename: 'a.pdf' })).status).toBe(422);
+
+    expect(afterMock).not.toHaveBeenCalled();
   });
 
   afterAll(async () => {

@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from 'next/server';
+import { after, NextResponse, type NextRequest } from 'next/server';
 
 import {
   validateSession,
@@ -8,6 +8,7 @@ import {
 } from '@/features/auth';
 import {
   completeKnowledgeDocumentUpload,
+  processKnowledgeDocument,
   UploadObjectMissingError,
   UploadObjectTooLargeError,
   UploadObjectContentTypeMismatchError,
@@ -115,6 +116,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       id,
       filename,
     );
+    // ADR-0026 (PR D): text extraction runs after the response is sent. The
+    // response itself is unchanged; the document stays `processing`.
+    // `processKnowledgeDocument` never throws and logs only the document id and
+    // an outcome code (Owner ruling G4).
+    after(() => processKnowledgeDocument(session.clinicId, document.id));
     return NextResponse.json({ data: document }, { status: 201 });
   } catch (err) {
     if (err instanceof UploadObjectMissingError) {

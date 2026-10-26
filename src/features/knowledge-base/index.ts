@@ -33,6 +33,7 @@ import { createPresignedUploadUrl, headObject, readObjectPrefix } from './storag
 import { hasPdfSignature, PDF_SIGNATURE_LENGTH } from './pdf-signature';
 
 export type { KnowledgeDocument, KnowledgeDocumentStatus };
+export { processKnowledgeDocument, type ProcessingOutcome } from './processing';
 export { DuplicateKnowledgeDocumentError };
 
 /**

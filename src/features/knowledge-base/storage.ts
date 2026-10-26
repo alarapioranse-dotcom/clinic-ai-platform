@@ -19,11 +19,17 @@ import {
  * CONTRIBUTING.md, "a feature never imports another feature's internals").
  *
  * Roadmap P5 Slice 1B (ADR-0018, Accepted): the only module that talks to
- * Scaleway Object Storage. Two operations only, matching the upload flow's
- * two stages — a presigned PUT for initiation, a HeadObject for completion.
- * File bytes never pass through this process (ADR-0018 Decision 1): this
- * module never issues `PutObject` itself, only signs a URL the browser uses
- * directly.
+ * Scaleway Object Storage. Uploads never pass through this process (ADR-0018
+ * Decision 1): this module never issues `PutObject` itself, only signs a URL
+ * the browser uses directly.
+ *
+ * Server-side reads of object contents are exactly two, each authorised by
+ * its own decision:
+ *   - `readObjectPrefix`: at most 1024 bytes at upload completion (ADR-0021).
+ *   - `readObjectForExtraction`: the whole object (at most 10 MiB), only for
+ *     text extraction after completion. ADR-0021 Decision 3 requires any
+ *     full-body read to have its own decision; ADR-0026 section 3 (Accepted)
+ *     is that decision (Owner ruling G1, PR D).
  *
  * Credentials come only from `src/lib/env.ts`'s lazy Scaleway getters —
  * never read from `process.env` here, never logged, never included in a
@@ -152,10 +158,12 @@ function isNotFoundError(err: unknown): boolean {
 }
 
 /**
- * The one and only number of object bytes this feature ever reads server-side
+ * The number of object bytes the completion-time signature check reads
  * (ADR-0021: at most the first 1024 bytes, completion only, solely for the
  * file-type signature check). A fixed constant on purpose — it is not a
- * parameter, so no caller can widen the read.
+ * parameter, so no caller can widen that read. The only other read,
+ * `readObjectForExtraction`, has its own bound and its own decision
+ * (ADR-0026 section 3).
  */
 export const OBJECT_PREFIX_READ_BYTES = 1024;
 
@@ -233,4 +241,94 @@ function isPreconditionFailedError(err: unknown): boolean {
   const metadata =
     '$metadata' in err ? (err as { $metadata?: { httpStatusCode?: number } }).$metadata : undefined;
   return metadata?.httpStatusCode === 412;
+}
+
+/**
+ * The most bytes `readObjectForExtraction` ever accepts: the same 10 MiB limit
+ * as upload completion. A fixed constant, not a parameter.
+ */
+export const OBJECT_FULL_READ_MAX_BYTES = 10 * 1024 * 1024;
+
+export type ReadObjectForExtractionResult =
+  { outcome: 'ok'; bytes: Uint8Array } | { outcome: 'not_found' } | { outcome: 'changed' };
+
+/**
+ * Whole-object read for text extraction (ADR-0026 section 3, the full-body read
+ * decision ADR-0021 Decision 3 requires). A GET conditioned on `IfMatch: etag`,
+ * where `etag` and `expectedLength` come from a HeadObject of the same key just
+ * before, so the bytes belong to the object whose size and Content-Type were
+ * checked.
+ *
+ * Bounds, enforced in layers:
+ * 1. `expectedLength` must be between 1 and OBJECT_FULL_READ_MAX_BYTES.
+ * 2. The response's `ContentLength` must equal `expectedLength`; otherwise the
+ *    body is never consumed.
+ * 3. The body is read as a stream and abandoned as soon as more bytes arrive
+ *    than `expectedLength`; a shorter body is treated the same way.
+ * A store answering 412 (the object was replaced), a length mismatch or an
+ * over-long body all return `{ outcome: 'changed' }`: extraction fails closed
+ * rather than assume the object is unchanged.
+ *
+ * The bytes go to the extraction worker only: they are never logged, persisted,
+ * returned to a client or placed in an error message.
+ */
+export async function readObjectForExtraction(
+  key: string,
+  etag: string,
+  expectedLength: number,
+): Promise<ReadObjectForExtractionResult> {
+  if (
+    !Number.isInteger(expectedLength) ||
+    expectedLength < 1 ||
+    expectedLength > OBJECT_FULL_READ_MAX_BYTES
+  ) {
+    throw new Error('readObjectForExtraction: expected length out of bounds.');
+  }
+
+  let body: unknown;
+  try {
+    const result = await getClient().send(
+      new GetObjectCommand({ Bucket: getScalewayS3Bucket(), Key: key, IfMatch: etag }),
+    );
+    body = result.Body;
+    if (!body || result.ContentLength !== expectedLength) {
+      destroyBody(body);
+      return { outcome: 'changed' };
+    }
+
+    const parts: Uint8Array[] = [];
+    let total = 0;
+    for await (const part of body as AsyncIterable<Uint8Array>) {
+      total += part.byteLength;
+      if (total > expectedLength) {
+        destroyBody(body);
+        return { outcome: 'changed' };
+      }
+      parts.push(part);
+    }
+    if (total !== expectedLength) {
+      return { outcome: 'changed' };
+    }
+
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    for (const part of parts) {
+      bytes.set(part, offset);
+      offset += part.byteLength;
+    }
+    return { outcome: 'ok', bytes };
+  } catch (err) {
+    destroyBody(body);
+    if (isNotFoundError(err)) {
+      return { outcome: 'not_found' };
+    }
+    if (isPreconditionFailedError(err)) {
+      return { outcome: 'changed' };
+    }
+    throw err;
+  }
+}
+
+function destroyBody(body: unknown): void {
+  (body as { destroy?: () => void } | undefined)?.destroy?.();
 }

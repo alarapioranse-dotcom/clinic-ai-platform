@@ -6,8 +6,8 @@ anyone. Every external message needs the Owner's approval first.
 **Working name:** Clinic AI Platform (the brand name is not settled; do not use a candidate name in
 outreach until it is chosen). Contact: `clinicai.europe@gmail.com`.
 
-**Checked against:** `main` at `93f1b2e` (2026-10-25). PR #111 (text extraction after upload) is
-open and not merged.
+**Checked against:** `main` at `b24324f` (2026-10-26). PR #111 (text extraction after upload) is
+merged and deployed; its post-merge verification (Gate 5) passed on 2026-10-26.
 
 ## One sentence
 
@@ -51,9 +51,10 @@ figures yet, and the materials must not suggest otherwise.
   so the full signed-in flow has only been exercised in tests and in the demo environment.
 - **File reading from production storage.** The permission of the production storage key to read
   uploaded files is not proven.
-- **Text extraction from uploaded PDFs** (PR #111). It is built and tested, but not merged or
-  deployed. Known limit: Arabic text from some word processors does not extract verbatim. On the
-  current hosting plan, a restart during processing can leave a document stuck in "processing"
+- **Text extraction from uploaded PDFs** (PR #111). It is merged and deployed (`b24324f`), but not
+  approved for real-clinic use until production storage read permission is verified and review D6
+  is closed. No document has been uploaded in production. Known limit: Arabic text from some word
+  processors does not extract verbatim. On the current hosting plan, a restart during processing can leave a document stuck in "processing"
   (review D6 is still open).
 
 ### 3. Planned, incomplete or not available
@@ -138,7 +139,7 @@ Technical:
 - [ ] Greek (and English) staff interface. Today every screen is in Arabic only (checked at
       `93f1b2e`: Arabic text in 25 screen files, Greek in none). This is also the main obstacle to
       a convincing demo for a Greek clinic.
-- [ ] PR #111 reviewed, merged and verified after deployment.
+- [x] PR #111 reviewed, merged and verified after deployment (`b24324f`, 2026-10-26).
 - [ ] AI provider decision (ADR-0019) recorded before any AI reply exists.
 - [ ] Retrieval and staff-approved draft replies built, with their own ADR and gates.
 - [ ] Patient channel decided (needs an ADR) and built.

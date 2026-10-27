@@ -1,7 +1,8 @@
 # P1 procedure — apply migration 0020 to production
 
-**Status:** prepared and rehearsed, **not executed**. Running it needs a separate, explicit Owner
-approval. **Scope:** production database `clinic-ai-db` (`dpg-daekbjmq1p3s739nc4og-a`) only,
+**Status:** **executed** on 2026-10-25 by the Owner, under the explicit Owner approval recorded on
+#114; result **VERIFIED** (see [Production run](#production-run-2026-10-25) at the end). Production is
+now at migration 0020, so this procedure must not be run again: its pre-check would print `STOP`. **Scope:** production database `clinic-ai-db` (`dpg-daekbjmq1p3s739nc4og-a`) only,
 executing as `clinic_ai_platform_user`, from the Owner's Termux. **Prerequisite:** PR #112 merged
 (0020 sets function privileges before the ownership transfer). This file contains no secret; the
 database URL is typed into Termux with `read -rs` and never written down.
@@ -581,3 +582,27 @@ first run.
 does not exist` and printed no result.
 - Every earlier post-check case: `NOT VERIFIED`, or an `ERROR` with no result.
 - Post-check at the end: `VERIFIED`. Pre-check after the apply: `STOP`.
+
+## Production run (2026-10-25)
+
+Run by the Owner from Termux under this procedure as merged at `93f1b2ed32ebc0c029c1f91c693d81721791a142`,
+after the Owner's explicit approval on #114. Source: the Owner's result comment on #114
+(<https://github.com/alarapioranse-dotcom/clinic-ai-platform/pull/114#issuecomment-6402698150>),
+summarised here; times are UTC.
+
+- PITR: enabled (Render Recovery page, checked 20:04).
+- Artifacts: downloaded from `93f1b2e`; sha256 matched for 0020 (`c57b32fd...7bf`) and for this
+  procedure file (`f967408a...77a`), as abbreviated in the Owner's comment.
+- Connection: `PGSSLMODE=verify-full`, `PGSSLROOTCERT=system`; URL guard `HOST-OK` with the login
+  `clinic_ai_platform_user2`.
+- Pre-check: `READY` at 20:07:30 (executing role `clinic_ai_platform_user`, 19 recorded migrations,
+  UTF8).
+- Apply: started 20:09:04, `COMMIT` at 20:09:07, `INSERT 0 1`, exit 0, no `WARNING` lines; the
+  statement sequence matched the final rehearsal.
+- Post-check: `VERIFIED`, all 14 columns true (`migrations_ok`, `role_ok`, `memberships_ok`, `rls_ok`,
+  `app_user_ok`, `app_user_role_ok`, `table_acl_ok`, `constraints_ok`, `triggers_rules_ok`,
+  `schema_ok`, `functions_ok`, `all_secdef_ok`, `default_acl_ok`, `chunks_empty`).
+- Clean-up: variables unset, `~/c20` removed.
+
+This run closed P1 only. #111 (extraction wired after upload completion) was reviewed and approved
+separately and merged as `b24324f` on 2026-10-26.

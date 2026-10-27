@@ -7,10 +7,12 @@ knowledge base. See `docs/` for the full plan.
 
 - **P0 — Foundation:** Done
 - **P1 — Multi-tenancy and data:** Done (2e0875c)
-- **P2 — Authentication and authorization:** P2a staff auth done (6a8a95b); roles and permissions per ADR-0004 still to do
-- **P3 — Conversations:** Planned
-- **P4 — Appointments:** Planned
-- **P5 — Knowledge base and AI:** Planned
+- **P2 — Authentication and authorization:** Done
+- **P3 — Conversations:** Done
+- **P4 — Appointments:** Done
+- **P5 — Knowledge base and AI:** In progress — knowledge-document storage, upload, owner/admin screens and text extraction with chunking (ADR-0026) are done; retrieval and AI replies are not built, and no AI provider is selected (ADR-0019, Proposed)
+
+Production runs migrations 0001-0020. Current status in detail: [`CLAUDE.md`](./CLAUDE.md#status).
 
 Details and acceptance criteria per phase: [`docs/03-roadmap.md`](./docs/03-roadmap.md).
 

@@ -8,7 +8,8 @@ Proposed
 
 2026-09-20 (first draft); revised 2026-10-18 to record the Mistral privacy-team evidence of
 2026-09-30 and the owner rulings R1-R4 of 2026-10-18; revised 2026-10-23 to record vendor
-correspondence of 2026-10-19 to 2026-10-23 and the Scaleway binding documents read.
+correspondence of 2026-10-19 to 2026-10-23 and the Scaleway binding documents read; revised
+2026-10-27 to record Scaleway correspondence of 2026-10-26 and 2026-10-27.
 
 ## Phase
 
@@ -375,6 +376,63 @@ to Scaleway's AI Services. Scaleway named, as an
 alternative, running a model on its HDS-certified infrastructure (for example dedicated GPU
 instances); that would make model hosting this product's own operational responsibility, which no
 ruling has considered.
+
+### Vendor correspondence, 2026-10-26 to 2026-10-27
+
+The owner sent Scaleway three follow-up questions on 2026-10-23 and three more on 2026-10-26 (same
+privacy-team thread, ticket `4PGX1W-23W1L`). Scaleway answered on 2026-10-26 and on 2026-10-27.
+Type: correspondence only. No new binding document was opened or read for this section, so no
+classification above moves to VERIFIED on the strength of these answers.
+
+What Scaleway stated:
+
+- **Document precedence.** In descending order: the service's Specific Conditions, then the DPA,
+  then the General Terms of Services. Asked which clause of the General Terms sets that order,
+  Scaleway cited only the Specific Conditions' own statement that they prevail over the General
+  Terms, and described the DPA as taking precedence on processing commitments. No clause of the
+  General Terms placing the DPA in that order was named. The Generative APIs data-privacy page is
+  said to be incorporated through the Specific Conditions' references to service documentation; the
+  Specific Conditions [5] read on 2026-10-23 contain no explicit incorporation of that page.
+- **14-day ceiling.** The 14-day ceiling covers every exceptional-retention case of [5] Art. 4.4
+  (service-quality errors and suspected abuse alike), with automated deletion. The ceiling itself is
+  stated only in the data-privacy page, which says it may be updated. Scaleway offered to make it
+  binding as a schedule or written amendment to the DPA or an enterprise contract. Until such an
+  amendment is signed, retention stays **VERIFICATION REQUIRED**.
+- **Health data and DPA §2.1.** Scaleway considers its HDS-certified services the ones "adapted"
+  under §2.1 (Instances, Block Storage, Object Storage, Dedibox, Elastic Metal, VPC, Kapsule, Load
+  Balancer); Generative APIs is not HDS-certified. Article 9 data is not contractually prohibited,
+  but §2.1 leaves the legal qualification with the client: a client subject to a statutory hosting
+  mandate must use an HDS-certified product instead. This confirms that the open question above is
+  a regulatory question for the external adviser; it does not answer it.
+- **Sub-processors per data flow.** (a) Inference content: no external sub-processor; processing in
+  Paris (fr-par) on Scaleway infrastructure, with Op Core providing space and power only. (b)
+  Account, billing and technical logs: Scaleway S.A.S., France/EU. (c) Support tickets and privacy
+  requests: Scaleway staff plus Zendesk (Zendesk, Inc. and Zendesk International Ltd.), with ticket
+  data said to be hosted in Zendesk's EU data centres and stored in France. Scaleway classes
+  Zendesk as a sub-processor for account, commercial and support data only, outside the cloud
+  sub-processor register. The register was not read for this section (Scaleway pointed to
+  `https://www.scaleway.com/en/contracts/`). The owner has stated that no personal data will be put
+  in support tickets.
+- **Log retention.** Aggregated, non-personal usage telemetry up to 6 months; edge and access
+  security logs with IP addresses 15 to 90 days; control-plane and audit logs 90 days; records tied
+  to a specific security incident for the investigation or legal defence, up to 1 year. Whether
+  incident records can contain request content is not stated.
+
+Still open for Scaleway after this correspondence:
+
+1. A signed DPA schedule or amendment making the 14-day ceiling binding (Scaleway has offered one).
+2. Written confirmation that security-incident records (kept up to 1 year) contain no inference
+   request or response content.
+3. Reading the official sub-processor register and the DPA version that would apply to this
+   product's account.
+4. EU/EEA residency: Scaleway earlier declined a contractual residency addendum, and [6] still
+   allows transfers outside the EU after prior notice; ADR-0009 §4 stays strict (R1).
+5. The HDS or equivalent-scheme question, for the ADR-0011 §5 external adviser.
+
+Scaleway therefore still does **not** pass gate 1 (Contract). It remains the candidate with the most
+evidence gathered so far; that is a statement about evidence, not a selection. As of 2026-10-27,
+OVHcloud and IONOS have sent no substantive answer, and Mistral, which did not answer by the owner's
+2026-10-25 deadline, stays BLOCKED under R2.
 
 ### Classification: every mandatory constraint is VERIFICATION REQUIRED, for every candidate
 

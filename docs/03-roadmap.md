@@ -68,3 +68,22 @@ than bolted on later.
 - The `knowledge-base` feature owns retrieval logic behind its public entry
   point; AI/LLM calls are isolated behind an interface so the provider can
   change without touching call sites.
+
+## Staff UI localization (pilot readiness)
+
+Not part of P5's acceptance criteria. Decided by
+[ADR-0027](./adr/0027-staff-ui-localization.md) (Proposed); no slice starts before the Owner accepts
+it. Delivered in three slices, each with its own Owner approval.
+
+**Acceptance criteria:**
+
+- Every staff screen, the login and invitation-acceptance pages, the app navigation, the environment
+  notice, `error.tsx` and `not-found.tsx` render in Arabic, Greek or English.
+- The language is chosen per staff member from a switcher on every in-scope screen, kept in a
+  `locale` cookie, with `Accept-Language` and then Greek as the fallback; no database change.
+- `<html lang dir>`, fonts and date and number formatting follow the active language; Arabic renders
+  right-to-left, Greek and English left-to-right.
+- A missing dictionary key fails `npm run typecheck`.
+- An Arabic user sees no change after the first slice.
+- Greek text is reviewed by a native Greek speaker, recorded in the pull request, before any Greek
+  screen is shown to a clinic.

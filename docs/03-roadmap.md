@@ -72,8 +72,8 @@ than bolted on later.
 ## Staff UI localization (pilot readiness)
 
 Not part of P5's acceptance criteria. Decided by
-[ADR-0027](./adr/0027-staff-ui-localization.md) (Proposed); no slice starts before the Owner accepts
-it. Delivered in three slices, each with its own Owner approval.
+[ADR-0027](./adr/0027-staff-ui-localization.md) (Accepted 2026-10-28). Delivered in three slices,
+each with its own Owner approval.
 
 **Acceptance criteria:**
 

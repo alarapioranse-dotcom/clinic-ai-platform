@@ -1,7 +1,7 @@
 import Link from 'next/link';
 
 import { Container } from '@/components/ui/Container';
-import { marketingNav } from '@/config/navigation';
+import { marketingNav } from '@/config/marketing-navigation';
 import { siteConfig } from '@/config/site';
 
 export function Header() {

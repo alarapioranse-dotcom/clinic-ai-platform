@@ -2,28 +2,38 @@ import { describe, it, expect } from 'vitest';
 
 import { environmentNotice } from '@/config/environment-notice';
 import { signOutOutcome } from '@/components/app/sign-out';
+import { AVAILABLE_LOCALES, getDictionary } from '@/i18n/dictionaries';
 
 /**
  * docs/operations/2026-10-21-demo-environment-option-c.md, rule 3: every
  * non-production environment shows a "no real patient data" notice, and
- * production never does.
+ * production never does. Since ADR-0027 the notice text comes from the
+ * dictionary of the active locale, so this is checked for every locale that
+ * has one.
  */
 describe('environmentNotice', () => {
-  it('never shows a notice in production', () => {
-    expect(environmentNotice('production')).toBeNull();
-  });
+  for (const locale of AVAILABLE_LOCALES) {
+    const messages = getDictionary(locale).environmentNotice;
 
-  for (const appEnv of ['staging', 'development'] as const) {
-    it(`shows a no-real-patient-data notice in ${appEnv}`, () => {
-      const notice = environmentNotice(appEnv);
-      expect(notice).not.toBeNull();
-      expect(notice).toContain('لا تُدخل بيانات مرضى');
+    it(`never shows a notice in production (${locale})`, () => {
+      expect(environmentNotice('production', messages)).toBeNull();
+    });
+
+    it(`shows the dictionary's notice in staging and development (${locale})`, () => {
+      expect(environmentNotice('staging', messages)).toBe(messages.staging);
+      expect(environmentNotice('development', messages)).toBe(messages.development);
+      expect(messages.staging).not.toBe(messages.development);
     });
   }
 
-  it('labels staging as the demo environment and development as development', () => {
-    expect(environmentNotice('staging')).toContain('بيئة تجريبية');
-    expect(environmentNotice('development')).toContain('بيئة تطوير');
+  // Rule 3's content requirement, checked on the Arabic text itself: both
+  // notices must say not to enter real patient data, and name their environment.
+  it('says "no real patient data" and names the environment in Arabic', () => {
+    const messages = getDictionary('ar').environmentNotice;
+    expect(messages.staging).toContain('لا تُدخل بيانات مرضى');
+    expect(messages.development).toContain('لا تُدخل بيانات مرضى');
+    expect(messages.staging).toContain('بيئة تجريبية');
+    expect(messages.development).toContain('بيئة تطوير');
   });
 });
 

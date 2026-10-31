@@ -29,6 +29,15 @@
     font-family: var(--font-body);
   }
 
+  /* ADR-0027 decision 7: Greek and English use Noto Sans, loaded by the
+     staff root layout only for those locales. Arabic documents, including
+     every marketing page, keep the Arabic fonts above. */
+  html:lang(el),
+  html:lang(en) {
+    --font-display: 'Noto Sans', 'Segoe UI', sans-serif;
+    --font-body: 'Noto Sans', 'Segoe UI', sans-serif;
+  }
+
   :focus-visible {
     outline: 2px solid var(--color-pine);
     outline-offset: 2px;

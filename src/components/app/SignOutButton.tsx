@@ -3,6 +3,8 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
+import type { Dictionary } from '@/i18n/dictionaries';
+
 import { signOutOutcome } from './sign-out';
 
 type SignOutState = 'idle' | 'signing_out' | 'error';
@@ -12,7 +14,7 @@ type SignOutState = 'idle' | 'signing_out' | 'error';
  * POST /api/auth/sign-out (which revokes the session server-side and clears
  * the cookie), then sends them to /login.
  */
-export function SignOutButton() {
+export function SignOutButton({ t }: { t: Dictionary['signOut'] }) {
   const router = useRouter();
   const [state, setState] = useState<SignOutState>('idle');
 
@@ -35,7 +37,7 @@ export function SignOutButton() {
     <span className="flex items-center gap-2">
       {state === 'error' ? (
         <span role="alert" className="text-sm text-red-700">
-          تعذّر تسجيل الخروج.
+          {t.error}
         </span>
       ) : null}
       <button
@@ -44,11 +46,7 @@ export function SignOutButton() {
         disabled={state === 'signing_out'}
         className="text-muted hover:text-ink text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {state === 'signing_out'
-          ? 'جارٍ تسجيل الخروج…'
-          : state === 'error'
-            ? 'إعادة المحاولة'
-            : 'تسجيل الخروج'}
+        {state === 'signing_out' ? t.signingOut : state === 'error' ? t.retry : t.signOut}
       </button>
     </span>
   );

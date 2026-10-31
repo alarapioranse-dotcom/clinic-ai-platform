@@ -23,7 +23,7 @@ const nextConfig: NextConfig = {
       // all, as defence in depth for the token in its URL fragment (which
       // browsers never put in a Referer anyway). Listed after the catch-all
       // so this value wins for /invite. No-store caching for the page comes
-      // from rendering it dynamically (src/app/(auth)/invite/page.tsx).
+      // from rendering it dynamically (src/app/(staff)/(auth)/invite/page.tsx).
       {
         source: '/invite',
         headers: [{ key: 'Referrer-Policy', value: 'no-referrer' }],

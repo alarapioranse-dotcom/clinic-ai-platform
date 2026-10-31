@@ -5,7 +5,7 @@ import {
   INVITE_PASSWORD_MIN_LENGTH,
   codePointLength,
   takeInvitationToken,
-} from '@/app/(auth)/invite/invite-token';
+} from '@/app/(staff)/(auth)/invite/invite-token';
 import { NEW_PASSWORD_MAX_LENGTH, NEW_PASSWORD_MIN_LENGTH } from '@/features/auth';
 import nextConfig from '../../../next.config';
 

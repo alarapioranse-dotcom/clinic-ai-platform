@@ -11,6 +11,7 @@ knowledge base. See `docs/` for the full plan.
 - **P3 — Conversations:** Done
 - **P4 — Appointments:** Done
 - **P5 — Knowledge base and AI:** In progress — knowledge-document storage, upload, owner/admin screens and text extraction with chunking (ADR-0026) are done; retrieval and AI replies are not built, and no AI provider is selected (ADR-0019, Proposed)
+- **Staff UI localization (ADR-0027):** Slice 1 of 3 done — the language mechanism, with Arabic as the only language and no visible change; English and Greek are not built
 
 Production runs migrations 0001-0020. Current status in detail: [`CLAUDE.md`](./CLAUDE.md#status).
 
@@ -46,10 +47,13 @@ Full write-up: [`docs/02-architecture.md`](./docs/02-architecture.md).
 ```
 src/
   app/
-    (marketing)/       # public Arabic RTL landing page
-    (app)/              # signed-in shell, intentionally empty in Phase 0
-    api/health/         # health check route
-    layout.tsx, error.tsx, not-found.tsx, globals.css, icon.svg
+    (marketing)/        # public landing page; its own root layout, always Arabic RTL
+    (staff)/            # staff UI root layout (follows the staff locale), error and 404 pages
+      (auth)/           # sign-in and invitation acceptance
+      (app)/            # signed-in shell and dashboard (session check in its layout)
+    api/                # route handlers, including api/health
+    RootDocument.tsx, globals.css, icon.svg
+  i18n/                 # ADR-0027: locales, locale resolution, dictionaries, setLocale
   components/
     ui/                 # generic primitives
     marketing/          # landing page sections

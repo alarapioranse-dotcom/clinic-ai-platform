@@ -19,7 +19,9 @@ export default function ErrorPage({
   // provides none, and while only one locale exists, it renders nothing.
   return (
     <>
-      <ContextLanguageSwitcher />
+      <div className="px-6 pt-4 empty:hidden">
+        <ContextLanguageSwitcher />
+      </div>
       <div className="flex min-h-screen items-center justify-center px-6">
         <div className="max-w-md text-center">
           <p className="text-muted font-mono text-sm">{t.label}</p>

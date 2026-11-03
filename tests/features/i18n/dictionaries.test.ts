@@ -4,13 +4,16 @@ import { LOCALES } from '@/i18n/config';
 import { AVAILABLE_LOCALES, getDictionary, type Dictionary } from '@/i18n/dictionaries';
 import { ar } from '@/i18n/dictionaries/ar';
 import { arErrors } from '@/i18n/dictionaries/ar-errors';
+import { en } from '@/i18n/dictionaries/en';
+import { enErrors } from '@/i18n/dictionaries/en-errors';
 import { placeholdersOf } from '@/i18n/format';
 
 /**
  * ADR-0027 decision 4 and the architect's condition that every dictionary has
  * the same contract: the same nested keys, every value a string, and the same
- * `{placeholders}` in each value. In slice 1 only Arabic exists; slices 2 and
- * 3 add English and Greek, and every check below then runs against them too.
+ * `{placeholders}` in each value. English defines the contract (slice 2);
+ * every available dictionary is checked against it, and Greek joins in
+ * slice 3.
  */
 
 type Shape = Map<string, string[]>;
@@ -59,8 +62,14 @@ describe('dictionaries', () => {
     }
   });
 
+  it('are Arabic and English in slice 2, with no Greek dictionary', () => {
+    expect([...AVAILABLE_LOCALES]).toEqual(['ar', 'en']);
+    expect(() => getDictionary('el')).toThrow();
+  });
+
   it('share one contract: same keys and same placeholders in every locale', () => {
-    const reference = shapeOf(ar);
+    const reference = shapeOf(en);
+    expect(shapeOf(ar)).toEqual(reference);
     for (const locale of AVAILABLE_LOCALES) {
       expect(shapeOf(getDictionary(locale)), locale).toEqual(reference);
     }
@@ -81,14 +90,32 @@ describe('dictionaries', () => {
       'role',
       'email',
     ]);
-    for (const [path, placeholders] of shapeOf(ar)) {
+    for (const [path, placeholders] of shapeOf(en)) {
       for (const name of placeholders) expect(allowed.has(name), `${path}: {${name}}`).toBe(true);
     }
   });
 
-  it("keep the client-side errors fallback identical to the dictionary's errors namespace", () => {
+  it("keep each errors module identical to its dictionary's errors namespace", () => {
     expect(ar.errors).toBe(arErrors);
-    const errors: Dictionary['errors'] = arErrors;
+    expect(en.errors).toBe(enErrors);
+    const errors: Dictionary['errors'] = enErrors;
     expect(Object.keys(errors).sort()).toEqual(['body', 'code', 'label', 'retry', 'title']);
+    expect(Object.keys(arErrors).sort()).toEqual(Object.keys(enErrors).sort());
+  });
+
+  it('write English text in English, without Arabic or Greek script', () => {
+    for (const [path] of shapeOf(en)) {
+      const value = path
+        .split('.')
+        .reduce<unknown>((node, key) => (node as Record<string, unknown>)[key], en);
+      expect(String(value), path).not.toMatch(/[\p{Script=Arabic}\p{Script=Greek}]/u);
+      expect(String(value), path).toMatch(/[A-Za-z]/);
+    }
+  });
+
+  it('use "Practitioner" for every clinician in English (ruling D5)', () => {
+    expect(en.booking.practitioner).toBe('Practitioner');
+    expect(en.staff.rolePractitioner).toBe('Practitioner');
+    expect(JSON.stringify(en)).not.toMatch(/\bdoctors?\b/i);
   });
 });

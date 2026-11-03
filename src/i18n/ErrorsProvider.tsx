@@ -2,9 +2,9 @@
 
 import { createContext, useContext, type ReactNode } from 'react';
 
-import { arErrors } from './dictionaries/ar-errors';
+import { enErrors } from './dictionaries/en-errors';
 
-export type ErrorsMessages = typeof arErrors;
+export type ErrorsMessages = typeof enErrors;
 
 const ErrorsContext = createContext<ErrorsMessages | null>(null);
 
@@ -25,10 +25,11 @@ export function ErrorsProvider({
 }
 
 /**
- * The error page's text. Falls back to the Arabic `errors` namespace if the
+ * The error page's text. Falls back to the English `errors` namespace if the
  * provider is missing, so the error page still renders text rather than
- * failing itself.
+ * failing itself. Both root layouts always provide it: the marketing one with
+ * Arabic, the staff one with the staff locale.
  */
 export function useErrorsMessages(): ErrorsMessages {
-  return useContext(ErrorsContext) ?? arErrors;
+  return useContext(ErrorsContext) ?? enErrors;
 }

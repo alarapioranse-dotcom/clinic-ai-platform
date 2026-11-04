@@ -4,11 +4,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderServer } from './render-server';
 
 /**
- * ADR-0027 slice 1 at the rendered level, with the request's cookie and
- * Accept-Language header mocked: each root layout's document lang/dir, the
- * Arabic-only marketing document and metadata, the error and 404 routes, and
- * the hidden switcher. layout-locales.test.tsx covers the same layouts once
- * Greek and English dictionaries exist.
+ * ADR-0027 slice 2 at the rendered level, with the request's cookie and
+ * Accept-Language header mocked and the real dictionaries (Arabic and
+ * English; Greek has none yet): each root layout's document lang/dir and
+ * fonts, the Arabic-only marketing document, metadata, error text, the error
+ * and 404 routes, and the language switcher on every staff screen.
+ * layout-locales.test.tsx covers the same layouts with all three locales.
  */
 const request = vi.hoisted(() => ({
   cookie: undefined as string | undefined,
@@ -48,29 +49,65 @@ async function renderMarketingRoot(child: React.ReactNode = <p>page</p>) {
 
 const visitors: [string, string | undefined, string | null][] = [
   ['no preference', undefined, null],
-  ['Accept-Language el', undefined, 'el-GR,el;q=0.9'],
+  ['Accept-Language el only', undefined, 'el-GR,el;q=0.9'],
+  ['Accept-Language el, then en', undefined, 'el-GR,el;q=0.9,en;q=0.8'],
   ['Accept-Language en', undefined, 'en-US,en;q=0.9'],
-  ['cookie el', 'el', null],
-  ['cookie en', 'en', 'en'],
+  ['Accept-Language fr', undefined, 'fr-FR,fr;q=0.9'],
+  ['Accept-Language ar', undefined, 'ar-SA,ar;q=0.9'],
+  ['cookie el (no dictionary yet)', 'el', null],
+  ['cookie en', 'en', 'ar'],
+  ['cookie ar', 'ar', 'en-US,en;q=0.9'],
 ];
 
-describe('staff root layout in slice 1', () => {
+/** What the staff UI resolves each visitor to in slice 2 (the architect's D1 fallback). */
+const staffLocaleOf: Record<string, 'ar' | 'en'> = {
+  'no preference': 'en',
+  'Accept-Language el only': 'en',
+  'Accept-Language el, then en': 'en',
+  'Accept-Language en': 'en',
+  'Accept-Language fr': 'en',
+  'Accept-Language ar': 'ar',
+  'cookie el (no dictionary yet)': 'en',
+  'cookie en': 'en',
+  'cookie ar': 'ar',
+};
+
+describe('staff root layout in slice 2', () => {
   for (const [name, cookie, acceptLanguage] of visitors) {
-    it(`renders Arabic, right-to-left, with no Greek/Latin font (${name})`, async () => {
+    const locale = staffLocaleOf[name]!;
+    it(`renders ${locale} (${name})`, async () => {
       request.cookie = cookie;
       request.acceptLanguage = acceptLanguage;
       const html = await renderStaffRoot();
-      expect(html).toMatch(/^<html lang="ar" dir="rtl">/);
+      if (locale === 'ar') {
+        expect(html).toMatch(/^<html lang="ar" dir="rtl">/);
+        expect(html).not.toContain('Noto+Sans');
+      } else {
+        expect(html).toMatch(/^<html lang="en" dir="ltr">/);
+        expect(html).toContain('family=Noto+Sans');
+      }
       expect(html).toContain('family=IBM+Plex+Sans+Arabic');
-      expect(html).not.toContain('Noto+Sans');
+      expect(html).not.toMatch(/lang="el"/);
     });
   }
 
-  it('gives Arabic metadata', async () => {
+  it('gives English metadata to an English visitor and Arabic metadata to an Arabic one', async () => {
     const { generateMetadata } = await import('@/app/(staff)/layout');
-    const metadata = await generateMetadata();
-    expect(metadata.title).toBe('منصة العيادة الذكية');
-    expect(metadata.description).toMatch(/\p{Script=Arabic}/u);
+    request.acceptLanguage = 'en';
+    expect(await generateMetadata()).toMatchObject({
+      title: 'Clinic AI Platform',
+      description: expect.stringMatching(/^A multi-clinic AI platform/),
+    });
+    request.cookie = 'ar';
+    const arabic = await generateMetadata();
+    expect(arabic.title).toBe('منصة العيادة الذكية');
+    expect(arabic.description).toMatch(/\p{Script=Arabic}/u);
+  });
+
+  it('renders the environment notice in the staff locale', async () => {
+    const { en } = await import('@/i18n/dictionaries/en');
+    request.cookie = 'en';
+    expect(await renderStaffRoot()).toContain(en.environmentNotice.development);
   });
 });
 
@@ -101,28 +138,36 @@ describe('marketing root layout', () => {
     expect(siteConfig.locale).toBe('ar');
     expect(siteConfig.direction).toBe('rtl');
   });
+
+  it('shows no language switcher, even to an English visitor', async () => {
+    request.cookie = 'en';
+    request.acceptLanguage = 'en';
+    expect(await renderMarketingRoot()).not.toContain('<select');
+  });
 });
 
-describe('language switcher in slice 1', () => {
-  it('renders nothing while only one locale has a dictionary', async () => {
+describe('language switcher in slice 2', () => {
+  it('offers Arabic and English, each in its own language, with the current one selected', async () => {
     const { LanguageSwitcherSlot } = await import('@/components/app/LanguageSwitcherSlot');
-    expect(renderToStaticMarkup(await LanguageSwitcherSlot())).toBe('');
+    request.cookie = 'ar';
+    const html = renderToStaticMarkup(await LanguageSwitcherSlot());
+    expect(html).toContain('<span>اللغة</span>');
+    expect(html).toContain('<option value="ar" lang="ar" selected="">العربية</option>');
+    expect(html).toContain('<option value="en" lang="en">English</option>');
+    expect(html).not.toContain('value="el"');
+
+    request.cookie = 'en';
+    const english = renderToStaticMarkup(await LanguageSwitcherSlot());
+    expect(english).toContain('<span>Language</span>');
+    expect(english).toContain('<option value="en" lang="en" selected="">English</option>');
   });
 
-  it('renders a select once a second locale exists', async () => {
+  it('renders nothing when only one locale is offered', async () => {
     const { LanguageSwitcher } = await import('@/components/app/LanguageSwitcher');
     const html = renderToStaticMarkup(
-      <LanguageSwitcher
-        current="ar"
-        label="Language"
-        options={[
-          { locale: 'ar', name: 'العربية' },
-          { locale: 'en', name: 'English' },
-        ]}
-      />,
+      <LanguageSwitcher current="ar" label="Language" options={[{ locale: 'ar', name: 'ع' }]} />,
     );
-    expect(html).toContain('<select');
-    expect(html).toContain('<option value="en" lang="en">English</option>');
+    expect(html).toBe('');
   });
 });
 
@@ -140,12 +185,49 @@ describe('error page', () => {
     for (const text of ['>L<', '>T<', '>B<', '>C d1<', '>R<']) expect(html).toContain(text);
   });
 
-  it('still renders Arabic text if the provider is missing', async () => {
+  it('falls back to English text if the provider is missing', async () => {
     const { default: ErrorPage } = await import('@/app/(staff)/error');
-    const { arErrors } = await import('@/i18n/dictionaries/ar-errors');
+    const { enErrors } = await import('@/i18n/dictionaries/en-errors');
     const html = renderToStaticMarkup(<ErrorPage error={new Error('x')} reset={() => {}} />);
+    expect(html).toContain(enErrors.title);
+    expect(html).toContain(enErrors.retry);
+  });
+
+  it('inside the staff root layout, follows the staff locale', async () => {
+    const { default: ErrorPage } = await import('@/app/(staff)/error');
+    const { ar } = await import('@/i18n/dictionaries/ar');
+    const { en } = await import('@/i18n/dictionaries/en');
+    request.cookie = 'ar';
+    const arabic = await renderServer(
+      (await import('@/app/(staff)/layout')).default({
+        children: <ErrorPage error={new Error('x')} reset={() => {}} />,
+      }),
+    );
+    expect(arabic).toContain(ar.errors.title);
+    request.cookie = 'en';
+    const english = await renderServer(
+      (await import('@/app/(staff)/layout')).default({
+        children: <ErrorPage error={new Error('x')} reset={() => {}} />,
+      }),
+    );
+    expect(english).toContain(en.errors.title);
+  });
+
+  it('inside the marketing root layout, stays Arabic for an English visitor', async () => {
+    const { default: MarketingError } = await import('@/app/(marketing)/error');
+    const { arErrors } = await import('@/i18n/dictionaries/ar-errors');
+    const { enErrors } = await import('@/i18n/dictionaries/en-errors');
+    request.cookie = 'en';
+    request.acceptLanguage = 'en';
+    const html = await renderMarketingRoot(
+      <MarketingError error={new Error('x')} reset={() => {}} />,
+    );
     expect(html).toContain(arErrors.title);
     expect(html).toContain(arErrors.retry);
+    expect(html).not.toContain(enErrors.title);
+    expect(html).not.toContain('<select');
+    // The spacing wrapper is empty there, and `empty:hidden` hides it.
+    expect(html).toContain('<div class="px-6 pt-4 empty:hidden"></div>');
   });
 });
 
@@ -164,34 +246,44 @@ describe('routes outside the staff group', () => {
   });
 });
 
-describe('language switcher on every staff screen, hidden in slice 1', () => {
+describe('language switcher on every staff screen', () => {
   const noError = Object.assign(new Error('x'), { digest: 'd1' });
 
-  it('the 404 page renders its Arabic content and no switcher', async () => {
-    const { default: NotFound } = await import('@/app/(staff)/not-found');
-    const { ar } = await import('@/i18n/dictionaries/ar');
-    const html = await renderServer(<NotFound />);
-    expect(html).toContain(ar.notFound.title);
-    expect(html).not.toContain('<select');
-    expect(html).toMatch(/^<div class="flex min-h-screen items-center justify-center px-6">/);
-  });
+  for (const locale of ['ar', 'en'] as const) {
+    it(`the 404 page renders its ${locale} content and the switcher`, async () => {
+      const { default: NotFound } = await import('@/app/(staff)/not-found');
+      const { getDictionary } = await import('@/i18n/dictionaries');
+      request.cookie = locale;
+      const html = await renderServer(<NotFound />);
+      expect(html).toContain(getDictionary(locale).notFound.title);
+      expect(html).toMatch(/^<div class="px-6 pt-4 empty:hidden"><label[^>]*>.*<select/);
+      expect(html).toContain(`<option value="${locale}" lang="${locale}" selected="">`);
+    });
+  }
 
-  it('the error page inside the staff root layout renders no switcher', async () => {
+  it('the error page inside the staff root layout renders the switcher', async () => {
     const { default: StaffRootLayout } = await import('@/app/(staff)/layout');
     const { default: ErrorPage } = await import('@/app/(staff)/error');
+    request.cookie = 'en';
     const html = await renderServer(
       StaffRootLayout({ children: <ErrorPage error={noError} reset={() => {}} /> }),
     );
     expect(html).toContain('<button type="button"');
-    expect(html).not.toContain('<select');
+    expect(html).toMatch(/<div class="px-6 pt-4 empty:hidden"><label[^>]*>.*<select/);
+    expect(html).toContain('<option value="en" lang="en" selected="">English</option>');
   });
 
-  it('the sign-in pages and the app navigation render no switcher', async () => {
+  it('the sign-in pages and the app navigation render the switcher', async () => {
     const { default: AuthLayout } = await import('@/app/(staff)/(auth)/layout');
     const { AppShellNav } = await import('@/components/app/AppShellNav');
-    expect(await renderServer(AuthLayout({ children: 'login' }))).toBe('login');
+    request.cookie = 'en';
+    const auth = await renderServer(AuthLayout({ children: 'login' }));
+    expect(auth).toMatch(
+      /^<div class="px-6 pt-4 empty:hidden"><label[^>]*><span>Language<\/span><select/,
+    );
+    expect(auth).toMatch(/login$/);
     const nav = await renderServer(<AppShellNav role="owner" />);
-    expect(nav).toContain('<nav');
-    expect(nav).not.toContain('<select');
+    expect(nav).toContain('<nav aria-label="Dashboard navigation"');
+    expect(nav).toContain('<select');
   });
 });

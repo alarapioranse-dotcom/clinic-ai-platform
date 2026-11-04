@@ -73,9 +73,40 @@ describe('staff UI source (ADR-0027 slice 1)', () => {
       ].map((match) => match[1]!);
       for (const source of runtimeImports) {
         expect(source, `${relative(ROOT, file)} imports ${source}`).not.toMatch(
-          /i18n\/(?:server|dictionaries(?:\/(?:index|ar))?)$|\/dictionaries$|\/dictionaries\/ar$/,
+          /i18n\/(?:server|dictionaries(?:\/(?:index|ar|en))?)$|\/dictionaries$|\/dictionaries\/(?:ar|en)$/,
         );
       }
     }
+  });
+
+  it('has no hardcoded English text in JSX (heuristic, ADR-0027 slice 2)', () => {
+    // Text between tags on one line (`>Save<`), a line of bare words inside
+    // JSX children, or a literal text attribute. Comment lines are skipped.
+    // A heuristic: it catches the common shapes, not every possible one.
+    const inlineText = />([^<>{}();=`]*[A-Za-z]{2,}[^<>{}();=`]*)<\//;
+    const bareLine = /^[A-Z][a-z]+(?: [A-Za-z]+)*[.!?]?$/;
+    const textAttribute = /\b(?:aria-label|placeholder|title|alt|label)=["'][^"']*[A-Za-z]/;
+    const offenders = scopedFiles
+      .filter((file) => file.endsWith('.tsx'))
+      .flatMap((file) =>
+        read(file)
+          .split('\n')
+          .map((line, index) => ({ line: line.trim(), index }))
+          .filter(({ line }) => !/^(?:\/\/|\/?\*)/.test(line))
+          .filter(
+            ({ line }) => inlineText.test(line) || bareLine.test(line) || textAttribute.test(line),
+          )
+          .map(({ index, line }) => `${file}:${index + 1}: ${line}`),
+      );
+    expect(offenders).toEqual([]);
+  });
+
+  it('never renders a stored enum value directly (ruling D3)', () => {
+    const offenders = scopedFiles.filter((file) =>
+      /\{\s*(?:message\.senderType|appointment\.status)\s*\}|\(\{\s*appointment\.status\s*\}\)/.test(
+        read(file),
+      ),
+    );
+    expect(offenders).toEqual([]);
   });
 });

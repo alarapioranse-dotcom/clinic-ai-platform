@@ -11,6 +11,9 @@ export type Direction = 'rtl' | 'ltr';
 /** ADR-0027 decision 3(c): the fallback when neither the cookie nor Accept-Language decides. */
 export const DEFAULT_LOCALE: Locale = 'el';
 
+/** Used in step (c) only while the default locale has no dictionary (before slice 3). */
+export const SECONDARY_FALLBACK_LOCALE: Locale = 'en';
+
 /** ADR-0027 decision 3(a). Holds only the language preference, never an identifier. */
 export const LOCALE_COOKIE_NAME = 'locale';
 

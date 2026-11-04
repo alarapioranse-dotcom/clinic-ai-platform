@@ -11,7 +11,9 @@ export default async function NotFound() {
   // It renders nothing while only one locale has a dictionary.
   return (
     <>
-      <LanguageSwitcherSlot />
+      <div className="px-6 pt-4 empty:hidden">
+        <LanguageSwitcherSlot />
+      </div>
       <div className="flex min-h-screen items-center justify-center px-6">
         <div className="max-w-md text-center">
           <p className="text-muted font-mono text-sm">404</p>

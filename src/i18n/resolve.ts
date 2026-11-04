@@ -1,4 +1,4 @@
-import { DEFAULT_LOCALE, isLocale, type Locale } from './config';
+import { DEFAULT_LOCALE, isLocale, SECONDARY_FALLBACK_LOCALE, type Locale } from './config';
 
 /** One entry of an Accept-Language header, as RFC 9110 §12.5.4 defines it. */
 export interface LanguageRange {
@@ -62,9 +62,11 @@ export function matchAcceptLanguage(
  * ADR-0027 decision 3, restricted to the locales that have a dictionary
  * (`available`, never empty): (a) a valid `locale` cookie, (b) the best
  * Accept-Language match, (c) the default locale. A locale without a
- * dictionary is never returned: when the default has none, the first
- * available locale is used. In slice 1 only `ar` is available, so every
- * request resolves to `ar`.
+ * dictionary is never returned: when the default (Greek) has none, English
+ * is used if it has one, and otherwise the first available locale. So until
+ * slice 3 adds Greek, a request that asks only for Greek, or for no
+ * available language, gets English rather than Arabic; once Greek exists,
+ * it becomes the fallback with no change here.
  */
 export function resolveLocale({
   cookie,
@@ -82,5 +84,6 @@ export function resolveLocale({
   if (isLocale(cookie) && available.includes(cookie)) return cookie;
   const fromHeader = matchAcceptLanguage(acceptLanguage, available);
   if (fromHeader) return fromHeader;
-  return available.includes(DEFAULT_LOCALE) ? DEFAULT_LOCALE : fallback;
+  if (available.includes(DEFAULT_LOCALE)) return DEFAULT_LOCALE;
+  return available.includes(SECONDARY_FALLBACK_LOCALE) ? SECONDARY_FALLBACK_LOCALE : fallback;
 }

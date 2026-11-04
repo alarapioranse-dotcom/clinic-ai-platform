@@ -89,36 +89,58 @@ describe('matchAcceptLanguage', () => {
   });
 });
 
-describe('resolveLocale in slice 1 (only Arabic has a dictionary)', () => {
-  it('has only Arabic available', () => {
-    expect([...AVAILABLE_LOCALES]).toEqual(['ar']);
+describe('resolveLocale in slice 2 (Arabic and English have a dictionary)', () => {
+  it('has Arabic and English available, in that order, and not Greek', () => {
+    expect([...AVAILABLE_LOCALES]).toEqual(['ar', 'en']);
   });
 
-  const cases: [string, { cookie?: string; acceptLanguage?: string }][] = [
-    ['cookie ar', { cookie: 'ar' }],
-    ['cookie el', { cookie: 'el' }],
-    ['cookie en', { cookie: 'en' }],
-    ['invalid cookie', { cookie: 'fr' }],
-    ['malicious cookie', { cookie: '../../etc/passwd' }],
-    ['Accept-Language el', { acceptLanguage: 'el' }],
-    ['Accept-Language el-GR', { acceptLanguage: 'el-GR,el;q=0.9' }],
-    ['Accept-Language en', { acceptLanguage: 'en' }],
-    ['Accept-Language en-US', { acceptLanguage: 'en-US,en;q=0.9' }],
-    ['Accept-Language *', { acceptLanguage: '*' }],
-    ['no preference', {}],
+  const cases: [string, { cookie?: string; acceptLanguage?: string }, Locale][] = [
+    ['cookie ar', { cookie: 'ar', acceptLanguage: 'en' }, 'ar'],
+    ['cookie en', { cookie: 'en', acceptLanguage: 'ar' }, 'en'],
+    [
+      'cookie el (no dictionary) falls through to Accept-Language',
+      { cookie: 'el', acceptLanguage: 'ar' },
+      'ar',
+    ],
+    ['cookie el with no header', { cookie: 'el' }, 'en'],
+    ['invalid cookie', { cookie: 'fr' }, 'en'],
+    ['malicious cookie', { cookie: '../../etc/passwd', acceptLanguage: 'ar' }, 'ar'],
+    ['Accept-Language ar', { acceptLanguage: 'ar' }, 'ar'],
+    ['Accept-Language ar-SA', { acceptLanguage: 'ar-SA,ar;q=0.9' }, 'ar'],
+    ['Accept-Language en', { acceptLanguage: 'en' }, 'en'],
+    ['Accept-Language en-US', { acceptLanguage: 'en-US,en;q=0.9' }, 'en'],
+    ['Accept-Language el only → English, never Arabic', { acceptLanguage: 'el-GR,el;q=0.9' }, 'en'],
+    ['Accept-Language el, then ar', { acceptLanguage: 'el-GR,el;q=0.9,ar;q=0.5' }, 'ar'],
+    ['Accept-Language el, then en', { acceptLanguage: 'el-GR,el;q=0.9,en;q=0.8' }, 'en'],
+    ['Accept-Language en preferred over ar by q', { acceptLanguage: 'ar;q=0.4, en;q=0.6' }, 'en'],
+    ['Accept-Language ar;q=0 is refused', { acceptLanguage: 'ar;q=0' }, 'en'],
+    ['Accept-Language fr', { acceptLanguage: 'fr-FR,fr;q=0.9' }, 'en'],
+    ['Accept-Language *', { acceptLanguage: '*' }, 'en'],
+    ['no preference', {}, 'en'],
   ];
 
-  for (const [name, input] of cases) {
-    it(`${name} → ar`, () => {
+  for (const [name, input, expected] of cases) {
+    it(`${name} → ${expected}`, () => {
       expect(
         resolveLocale({
           cookie: input.cookie,
           acceptLanguage: input.acceptLanguage,
           available: AVAILABLE_LOCALES,
         }),
-      ).toBe('ar');
+      ).toBe(expected);
     });
   }
+});
+
+describe('resolveLocale fallback when Greek has no dictionary (architect ruling D1)', () => {
+  it('uses Greek when available, otherwise English, otherwise the first available locale', () => {
+    const fallback = (available: readonly Locale[]) =>
+      resolveLocale({ cookie: undefined, acceptLanguage: 'fr', available });
+    expect(fallback(['ar', 'el', 'en'])).toBe('el');
+    expect(fallback(['ar', 'en'])).toBe('en');
+    expect(fallback(['en', 'ar'])).toBe('en');
+    expect(fallback(['ar'])).toBe('ar');
+  });
 });
 
 describe('resolveLocale with every locale available (the contract slices 2 and 3 rely on)', () => {
@@ -144,8 +166,9 @@ describe('resolveLocale with every locale available (the contract slices 2 and 3
 
   it('never returns a locale outside the available list', () => {
     expect(resolveLocale({ cookie: 'el', acceptLanguage: 'el', available: ['ar', 'en'] })).toBe(
-      'ar',
+      'en',
     );
+    expect(resolveLocale({ cookie: 'el', acceptLanguage: 'el', available: ['ar'] })).toBe('ar');
     expect(resolveLocale({ cookie: undefined, acceptLanguage: undefined, available: ['en'] })).toBe(
       'en',
     );

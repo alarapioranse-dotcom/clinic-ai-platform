@@ -7,7 +7,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import type { Locale } from '@/i18n/config';
 import type { Dictionary } from '@/i18n/dictionaries';
-import { format } from '@/i18n/format';
+import { format, labelOf } from '@/i18n/format';
 
 import { BookAppointment } from './BookAppointment';
 
@@ -188,7 +188,8 @@ export function ConversationDetail({
             {state.detail.messages.map((message) => (
               <li key={message.id} className="border-line rounded-lg border p-4">
                 <p className="text-muted text-xs">
-                  {message.senderType} · {new Date(message.sentAt).toLocaleString(locale)}
+                  {labelOf(t.senderTypes, message.senderType)} ·{' '}
+                  {new Date(message.sentAt).toLocaleString(locale)}
                 </p>
                 <p className="mt-1 text-sm">{message.content}</p>
               </li>
@@ -233,7 +234,9 @@ export function ConversationDetail({
                   <li key={appointment.id} className="border-line rounded-lg border p-4 text-sm">
                     {new Date(appointment.startsAt).toLocaleString(locale)} —{' '}
                     {new Date(appointment.endsAt).toLocaleString(locale)}
-                    <span className="text-muted ms-2">({appointment.status})</span>
+                    <span className="text-muted ms-2">
+                      ({labelOf(t.appointmentStatuses, appointment.status)})
+                    </span>
                   </li>
                 ))}
               </ul>

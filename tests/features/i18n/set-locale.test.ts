@@ -46,18 +46,21 @@ describe('setLocale', () => {
     cookieDelete.mockReset();
   });
 
-  it('writes only the locale cookie for an available locale', async () => {
-    const { setLocale } = await import('@/i18n/actions');
-    await expect(setLocale('ar')).resolves.toEqual({ ok: true });
-    expect(cookieSet).toHaveBeenCalledTimes(1);
-    expect(cookieSet.mock.calls[0]![0]).toBe('locale');
-    expect(cookieSet.mock.calls[0]![1]).toBe('ar');
-    expect(cookieDelete).not.toHaveBeenCalled();
-  });
+  for (const locale of ['ar', 'en'] as const) {
+    it(`writes only the locale cookie for an available locale (${locale})`, async () => {
+      const { setLocale } = await import('@/i18n/actions');
+      await expect(setLocale(locale)).resolves.toEqual({ ok: true });
+      expect(cookieSet).toHaveBeenCalledTimes(1);
+      expect(cookieSet.mock.calls[0]![0]).toBe('locale');
+      expect(cookieSet.mock.calls[0]![1]).toBe(locale);
+      expect(cookieSet.mock.calls[0]![2]).toMatchObject({ httpOnly: true, secure: true });
+      expect(cookieDelete).not.toHaveBeenCalled();
+    });
+  }
 
-  it('writes nothing for a locale without a dictionary or an unknown value', async () => {
+  it('writes nothing for Greek (no dictionary in slice 2) or an unknown value', async () => {
     const { setLocale } = await import('@/i18n/actions');
-    for (const value of ['el', 'en', 'fr', '', null, { locale: 'ar' }]) {
+    for (const value of ['el', 'fr', 'EN', '', null, { locale: 'en' }]) {
       await expect(setLocale(value)).resolves.toEqual({ ok: false });
     }
     expect(cookieSet).not.toHaveBeenCalled();

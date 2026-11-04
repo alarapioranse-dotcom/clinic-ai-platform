@@ -39,3 +39,12 @@ export function formatParts(
 export function placeholdersOf(template: string): string[] {
   return [...template.matchAll(PLACEHOLDER)].map((match) => match[1]!);
 }
+
+/**
+ * The label a closed dictionary map gives a stored value (for example an
+ * appointment status). A value the map does not list is shown as stored,
+ * never replaced by another value's label, and never throws.
+ */
+export function labelOf(labels: Readonly<Record<string, string>>, value: string): string {
+  return Object.hasOwn(labels, value) ? labels[value]! : value;
+}

@@ -1,15 +1,17 @@
 import { arErrors } from './ar-errors';
+import type { Dictionary } from './index';
 
 /**
  * Arabic staff UI text (ADR-0027). Moved verbatim from the screens in slice 1:
- * an Arabic user sees exactly the text they saw before. Values are plain
- * strings so a namespace can be passed from a server page to a client
- * component; `{name}` marks a value filled by `format` / `formatParts`.
+ * an Arabic user sees exactly the text they saw before, except for the two
+ * slice 2 additions noted below (`replyFailed`, and the sender and
+ * appointment-status labels). Values are plain strings so a namespace can be
+ * passed from a server page to a client component; `{name}` marks a value
+ * filled by `format` / `formatParts`.
  *
- * Until slice 2 adds the English dictionary, this object's shape is the
- * dictionary type (`Dictionary` in ./index.ts).
+ * Typed against the English dictionary, which defines the contract.
  */
-export const ar = {
+export const ar: Dictionary = {
   common: {
     appName: 'منصة العيادة الذكية',
     appDescription:
@@ -101,12 +103,23 @@ export const ar = {
     title: 'محادثة',
     startedOn: 'بدأت في {date}',
     replyPlaceholder: 'اكتب ردك هنا...',
-    // Kept as it was shown before slice 1 (an untranslated string); changing
-    // it would be a visible change, so it is left for a later slice.
-    replyFailed: 'Message failed to send',
+    // Slice 2: translated (it was shown in English before).
+    replyFailed: 'تعذّر إرسال الرسالة',
     sending: 'جارٍ الإرسال...',
     send: 'إرسال',
     appointments: 'المواعيد',
+    // Slice 2: these were shown as the raw stored values (db/migrations/0010
+    // and 0011). A value missing here is shown as stored.
+    senderTypes: {
+      patient: 'المريض',
+      staff: 'الطاقم',
+    },
+    appointmentStatuses: {
+      booked: 'محجوز',
+      rescheduled: 'أُعيدت جدولته',
+      cancelled: 'ملغى',
+      completed: 'مكتمل',
+    },
   },
   booking: {
     title: 'حجز موعد',

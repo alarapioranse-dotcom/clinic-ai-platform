@@ -11,7 +11,7 @@ knowledge base. See `docs/` for the full plan.
 - **P3 — Conversations:** Done
 - **P4 — Appointments:** Done
 - **P5 — Knowledge base and AI:** In progress — knowledge-document storage, upload, owner/admin screens and text extraction with chunking (ADR-0026) are done; retrieval and AI replies are not built, and no AI provider is selected (ADR-0019, Proposed)
-- **Staff UI localization (ADR-0027):** Slice 1 of 3 done — the language mechanism, with Arabic as the only language and no visible change; English and Greek are not built
+- **Staff UI localization (ADR-0027):** Slices 1 and 2 of 3 done — the language mechanism and English; staff choose Arabic or English from a switcher on every staff screen. Greek is not built
 
 Production runs migrations 0001-0020. Current status in detail: [`CLAUDE.md`](./CLAUDE.md#status).
 

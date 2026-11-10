@@ -89,34 +89,31 @@ describe('matchAcceptLanguage', () => {
   });
 });
 
-describe('resolveLocale in slice 2 (Arabic and English have a dictionary)', () => {
-  it('has Arabic and English available, in that order, and not Greek', () => {
-    expect([...AVAILABLE_LOCALES]).toEqual(['ar', 'en']);
+describe('resolveLocale with the real dictionaries (slice 3: Arabic, Greek, English)', () => {
+  it('has all three locales available, in the order they are offered', () => {
+    expect([...AVAILABLE_LOCALES]).toEqual(['ar', 'el', 'en']);
   });
 
   const cases: [string, { cookie?: string; acceptLanguage?: string }, Locale][] = [
     ['cookie ar', { cookie: 'ar', acceptLanguage: 'en' }, 'ar'],
     ['cookie en', { cookie: 'en', acceptLanguage: 'ar' }, 'en'],
-    [
-      'cookie el (no dictionary) falls through to Accept-Language',
-      { cookie: 'el', acceptLanguage: 'ar' },
-      'ar',
-    ],
-    ['cookie el with no header', { cookie: 'el' }, 'en'],
-    ['invalid cookie', { cookie: 'fr' }, 'en'],
+    ['cookie el wins over Accept-Language', { cookie: 'el', acceptLanguage: 'ar' }, 'el'],
+    ['cookie el with no header', { cookie: 'el' }, 'el'],
+    ['invalid cookie', { cookie: 'fr' }, 'el'],
     ['malicious cookie', { cookie: '../../etc/passwd', acceptLanguage: 'ar' }, 'ar'],
     ['Accept-Language ar', { acceptLanguage: 'ar' }, 'ar'],
     ['Accept-Language ar-SA', { acceptLanguage: 'ar-SA,ar;q=0.9' }, 'ar'],
     ['Accept-Language en', { acceptLanguage: 'en' }, 'en'],
     ['Accept-Language en-US', { acceptLanguage: 'en-US,en;q=0.9' }, 'en'],
-    ['Accept-Language el only → English, never Arabic', { acceptLanguage: 'el-GR,el;q=0.9' }, 'en'],
-    ['Accept-Language el, then ar', { acceptLanguage: 'el-GR,el;q=0.9,ar;q=0.5' }, 'ar'],
-    ['Accept-Language el, then en', { acceptLanguage: 'el-GR,el;q=0.9,en;q=0.8' }, 'en'],
+    ['Accept-Language el', { acceptLanguage: 'el-GR,el;q=0.9' }, 'el'],
+    ['Accept-Language el, then ar', { acceptLanguage: 'el-GR,el;q=0.9,ar;q=0.5' }, 'el'],
+    ['Accept-Language el, then en', { acceptLanguage: 'el-GR,el;q=0.9,en;q=0.8' }, 'el'],
+    ['Accept-Language en, then el', { acceptLanguage: 'en-GB,en;q=0.9,el;q=0.8' }, 'en'],
     ['Accept-Language en preferred over ar by q', { acceptLanguage: 'ar;q=0.4, en;q=0.6' }, 'en'],
-    ['Accept-Language ar;q=0 is refused', { acceptLanguage: 'ar;q=0' }, 'en'],
-    ['Accept-Language fr', { acceptLanguage: 'fr-FR,fr;q=0.9' }, 'en'],
-    ['Accept-Language *', { acceptLanguage: '*' }, 'en'],
-    ['no preference', {}, 'en'],
+    ['Accept-Language ar;q=0 is refused', { acceptLanguage: 'ar;q=0' }, 'el'],
+    ['Accept-Language fr', { acceptLanguage: 'fr-FR,fr;q=0.9' }, 'el'],
+    ['Accept-Language *', { acceptLanguage: '*' }, 'el'],
+    ['no preference', {}, 'el'],
   ];
 
   for (const [name, input, expected] of cases) {

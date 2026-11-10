@@ -37,12 +37,12 @@ describe('staff UI source (ADR-0027 slice 1)', () => {
     expect(scopedFiles.length).toBeGreaterThan(30);
   });
 
-  it('has no Arabic text outside src/i18n', () => {
+  it('has no Arabic or Greek text outside src/i18n', () => {
     const offenders = scopedFiles.flatMap((file) =>
       read(file)
         .split('\n')
         .map((line, index) => ({ line, index }))
-        .filter(({ line }) => /\p{Script=Arabic}/u.test(line))
+        .filter(({ line }) => /[\p{Script=Arabic}\p{Script=Greek}]/u.test(line))
         .map(({ index, line }) => `${file}:${index + 1}: ${line.trim()}`),
     );
     expect(offenders).toEqual([]);
@@ -73,7 +73,7 @@ describe('staff UI source (ADR-0027 slice 1)', () => {
       ].map((match) => match[1]!);
       for (const source of runtimeImports) {
         expect(source, `${relative(ROOT, file)} imports ${source}`).not.toMatch(
-          /i18n\/(?:server|dictionaries(?:\/(?:index|ar|en))?)$|\/dictionaries$|\/dictionaries\/(?:ar|en)$/,
+          /i18n\/(?:server|dictionaries(?:\/(?:index|ar|el|en))?)$|\/dictionaries$|\/dictionaries\/(?:ar|el|en)$/,
         );
       }
     }

@@ -4,9 +4,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderServer } from './render-server';
 
 /**
- * ADR-0027 slice 2 at the rendered level, with the request's cookie and
+ * ADR-0027 slices 2 and 3 at the rendered level, with the request's cookie and
  * Accept-Language header mocked and the real dictionaries (Arabic and
- * English; Greek has none yet): each root layout's document lang/dir and
+ * Greek and English): each root layout's document lang/dir and
  * fonts, the Arabic-only marketing document, metadata, error text, the error
  * and 404 routes, and the language switcher on every staff screen.
  * layout-locales.test.tsx covers the same layouts with all three locales.
@@ -54,25 +54,27 @@ const visitors: [string, string | undefined, string | null][] = [
   ['Accept-Language en', undefined, 'en-US,en;q=0.9'],
   ['Accept-Language fr', undefined, 'fr-FR,fr;q=0.9'],
   ['Accept-Language ar', undefined, 'ar-SA,ar;q=0.9'],
-  ['cookie el (no dictionary yet)', 'el', null],
+  ['cookie el', 'el', 'en'],
+  ['Accept-Language en, then el', undefined, 'en-GB,en;q=0.9,el;q=0.8'],
   ['cookie en', 'en', 'ar'],
   ['cookie ar', 'ar', 'en-US,en;q=0.9'],
 ];
 
-/** What the staff UI resolves each visitor to in slice 2 (the architect's D1 fallback). */
-const staffLocaleOf: Record<string, 'ar' | 'en'> = {
-  'no preference': 'en',
-  'Accept-Language el only': 'en',
-  'Accept-Language el, then en': 'en',
+/** What the staff UI resolves each visitor to since slice 3 (Greek is the fallback). */
+const staffLocaleOf: Record<string, 'ar' | 'el' | 'en'> = {
+  'no preference': 'el',
+  'Accept-Language el only': 'el',
+  'Accept-Language el, then en': 'el',
   'Accept-Language en': 'en',
-  'Accept-Language fr': 'en',
+  'Accept-Language fr': 'el',
   'Accept-Language ar': 'ar',
-  'cookie el (no dictionary yet)': 'en',
+  'cookie el': 'el',
+  'Accept-Language en, then el': 'en',
   'cookie en': 'en',
   'cookie ar': 'ar',
 };
 
-describe('staff root layout in slice 2', () => {
+describe('staff root layout with the real dictionaries', () => {
   for (const [name, cookie, acceptLanguage] of visitors) {
     const locale = staffLocaleOf[name]!;
     it(`renders ${locale} (${name})`, async () => {
@@ -83,11 +85,10 @@ describe('staff root layout in slice 2', () => {
         expect(html).toMatch(/^<html lang="ar" dir="rtl">/);
         expect(html).not.toContain('Noto+Sans');
       } else {
-        expect(html).toMatch(/^<html lang="en" dir="ltr">/);
+        expect(html.startsWith(`<html lang="${locale}" dir="ltr">`)).toBe(true);
         expect(html).toContain('family=Noto+Sans');
       }
       expect(html).toContain('family=IBM+Plex+Sans+Arabic');
-      expect(html).not.toMatch(/lang="el"/);
     });
   }
 
@@ -104,10 +105,21 @@ describe('staff root layout in slice 2', () => {
     expect(arabic.description).toMatch(/\p{Script=Arabic}/u);
   });
 
+  it('gives Greek metadata to a Greek visitor', async () => {
+    const { generateMetadata } = await import('@/app/(staff)/layout');
+    request.acceptLanguage = 'el-GR,el;q=0.9';
+    const greek = await generateMetadata();
+    expect(greek.title).toBe('Clinic AI Platform');
+    expect(greek.description).toMatch(/\p{Script=Greek}/u);
+  });
+
   it('renders the environment notice in the staff locale', async () => {
     const { en } = await import('@/i18n/dictionaries/en');
+    const { el } = await import('@/i18n/dictionaries/el');
     request.cookie = 'en';
     expect(await renderStaffRoot()).toContain(en.environmentNotice.development);
+    request.cookie = 'el';
+    expect(await renderStaffRoot()).toContain(el.environmentNotice.development);
   });
 });
 
@@ -146,20 +158,27 @@ describe('marketing root layout', () => {
   });
 });
 
-describe('language switcher in slice 2', () => {
-  it('offers Arabic and English, each in its own language, with the current one selected', async () => {
+describe('language switcher with the real dictionaries', () => {
+  it('offers Arabic, Greek and English, each in its own language, with the current one selected', async () => {
     const { LanguageSwitcherSlot } = await import('@/components/app/LanguageSwitcherSlot');
     request.cookie = 'ar';
     const html = renderToStaticMarkup(await LanguageSwitcherSlot());
     expect(html).toContain('<span>اللغة</span>');
     expect(html).toContain('<option value="ar" lang="ar" selected="">العربية</option>');
     expect(html).toContain('<option value="en" lang="en">English</option>');
-    expect(html).not.toContain('value="el"');
+    expect(html).toContain('<option value="el" lang="el">Ελληνικά</option>');
+    expect(html.indexOf('value="ar"')).toBeLessThan(html.indexOf('value="el"'));
+    expect(html.indexOf('value="el"')).toBeLessThan(html.indexOf('value="en"'));
 
     request.cookie = 'en';
     const english = renderToStaticMarkup(await LanguageSwitcherSlot());
     expect(english).toContain('<span>Language</span>');
     expect(english).toContain('<option value="en" lang="en" selected="">English</option>');
+
+    request.cookie = 'el';
+    const greek = renderToStaticMarkup(await LanguageSwitcherSlot());
+    expect(greek).toContain('<span>Γλώσσα</span>');
+    expect(greek).toContain('<option value="el" lang="el" selected="">Ελληνικά</option>');
   });
 
   it('renders nothing when only one locale is offered', async () => {
@@ -249,7 +268,7 @@ describe('routes outside the staff group', () => {
 describe('language switcher on every staff screen', () => {
   const noError = Object.assign(new Error('x'), { digest: 'd1' });
 
-  for (const locale of ['ar', 'en'] as const) {
+  for (const locale of ['ar', 'el', 'en'] as const) {
     it(`the 404 page renders its ${locale} content and the switcher`, async () => {
       const { default: NotFound } = await import('@/app/(staff)/not-found');
       const { getDictionary } = await import('@/i18n/dictionaries');

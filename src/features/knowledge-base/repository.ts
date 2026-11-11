@@ -238,3 +238,27 @@ export async function markKnowledgeDocumentFailed(
     throw err;
   }
 }
+
+/**
+ * ADR-0028 decision 2: the ids of the context clinic's stuck documents —
+ * still `processing`, with no chunk set, and created more than
+ * `olderThanMinutes` ago. A document whose text was extracted keeps status
+ * `processing` (ADR-0026 D9) but has a chunk set, so it is never listed.
+ */
+export async function listStuckKnowledgeDocumentIds(
+  client: PoolClient,
+  olderThanMinutes: number,
+): Promise<string[]> {
+  const result = await client.query<{ id: string }>(
+    `SELECT d.id
+       FROM knowledge_documents d
+      WHERE d.status = 'processing'
+        AND d.created_at < now() - make_interval(mins => $1::int)
+        AND NOT EXISTS (
+          SELECT 1 FROM knowledge_document_chunks c WHERE c.document_id = d.id
+        )
+      ORDER BY d.created_at`,
+    [olderThanMinutes],
+  );
+  return result.rows.map((row) => row.id);
+}

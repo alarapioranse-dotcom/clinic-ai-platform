@@ -26,6 +26,8 @@ import {
   getKnowledgeDocumentById,
   insertKnowledgeDocument,
   DuplicateKnowledgeDocumentError,
+  listStuckKnowledgeDocumentIds,
+  markKnowledgeDocumentFailed,
   type KnowledgeDocument,
   type KnowledgeDocumentStatus,
 } from './repository';
@@ -98,9 +100,53 @@ export function toKnowledgeDocumentSummary(document: KnowledgeDocument): Knowled
   };
 }
 
+/**
+ * ADR-0028 decision 2: a document is stuck when it is still `processing`,
+ * has no chunk set, and was created more than this many minutes ago — thirty
+ * times the extraction worker's timeout, so a document that is still being
+ * extracted is never treated as stuck.
+ */
+export const STUCK_DOCUMENT_MINUTES = 15;
+
+/**
+ * Marks the clinic's stuck documents `failed` with `extraction_timeout`
+ * (ADR-0028), each in its own tenant transaction through
+ * `mark_knowledge_document_failed`, so the database still decides: a
+ * document that gained a chunk set or left `processing` meanwhile is left as
+ * it is. Never throws: a document that cannot be marked stays `processing`
+ * and is tried again on the next call. Logs only the document id and an
+ * outcome code (ADR-0026 ruling G4).
+ */
+export async function failStuckKnowledgeDocuments(clinicId: string): Promise<void> {
+  let ids: string[];
+  try {
+    ids = await withTenantContext(clinicId, (client) =>
+      listStuckKnowledgeDocumentIds(client, STUCK_DOCUMENT_MINUTES),
+    );
+  } catch {
+    console.error('knowledge_document_stuck check=failed');
+    return;
+  }
+  for (const id of ids) {
+    try {
+      const outcome = await withTenantContext(clinicId, (client) =>
+        markKnowledgeDocumentFailed(client, id, 'extraction_timeout'),
+      );
+      console.info(`knowledge_document_stuck document=${id} outcome=${outcome}`);
+    } catch {
+      console.error(`knowledge_document_stuck document=${id} outcome=unrecorded`);
+    }
+  }
+}
+
+/**
+ * The clinic's documents, after its stuck documents have been failed
+ * (ADR-0028 decision 2: detection happens when the list is read).
+ */
 export async function getKnowledgeDocumentsForClinic(
   clinicId: string,
 ): Promise<KnowledgeDocument[]> {
+  await failStuckKnowledgeDocuments(clinicId);
   return withTenantContext(clinicId, (client) => listKnowledgeDocuments(client));
 }
 

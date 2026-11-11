@@ -27,7 +27,8 @@ function invalidRequest(message: string) {
  * carries no parameters. RLS is the isolation boundary — the feature layer
  * reads under `withTenantContext`, with no manual clinic filter here.
  *
- * Reads database rows only: it never touches object storage or file bytes.
+ * Before listing, the clinic's stuck documents are marked failed (ADR-0028).
+ * Database rows only: it never touches object storage or file bytes.
  * Each item is `toKnowledgeDocumentSummary`'s shape, which omits
  * `storageKey`, `clinicId` and `uploadedBy` (Owner decision D7 = B).
  */

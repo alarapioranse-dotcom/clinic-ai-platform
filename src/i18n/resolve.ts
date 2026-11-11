@@ -63,10 +63,8 @@ export function matchAcceptLanguage(
  * (`available`, never empty): (a) a valid `locale` cookie, (b) the best
  * Accept-Language match, (c) the default locale. A locale without a
  * dictionary is never returned: when the default (Greek) has none, English
- * is used if it has one, and otherwise the first available locale. So until
- * slice 3 adds Greek, a request that asks only for Greek, or for no
- * available language, gets English rather than Arabic; once Greek exists,
- * it becomes the fallback with no change here.
+ * is used if it has one, and otherwise the first available locale. Since
+ * slice 3 Greek has a dictionary, so it is the fallback.
  */
 export function resolveLocale({
   cookie,

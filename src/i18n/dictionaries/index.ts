@@ -1,6 +1,7 @@
 import type { Locale } from '../config';
 
 import { ar } from './ar';
+import { el } from './el';
 import { en } from './en';
 
 /**
@@ -10,12 +11,11 @@ import { en } from './en';
  */
 export type Dictionary = typeof en;
 
-const DICTIONARIES: Readonly<Partial<Record<Locale, Dictionary>>> = { ar, en };
+const DICTIONARIES: Readonly<Partial<Record<Locale, Dictionary>>> = { ar, el, en };
 
 /**
  * Locales that have a dictionary, in the order they are offered. The locale
- * resolver only ever returns one of these (ADR-0027 slice 2: `ar` and `en`;
- * Greek arrives in slice 3).
+ * resolver only ever returns one of these (all three since ADR-0027 slice 3).
  */
 export const AVAILABLE_LOCALES: readonly Locale[] = (['ar', 'el', 'en'] as const).filter(
   (locale) => DICTIONARIES[locale] !== undefined,

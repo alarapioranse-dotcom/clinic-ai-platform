@@ -4,6 +4,8 @@ import { LOCALES } from '@/i18n/config';
 import { AVAILABLE_LOCALES, getDictionary, type Dictionary } from '@/i18n/dictionaries';
 import { ar } from '@/i18n/dictionaries/ar';
 import { arErrors } from '@/i18n/dictionaries/ar-errors';
+import { el } from '@/i18n/dictionaries/el';
+import { elErrors } from '@/i18n/dictionaries/el-errors';
 import { en } from '@/i18n/dictionaries/en';
 import { enErrors } from '@/i18n/dictionaries/en-errors';
 import { placeholdersOf } from '@/i18n/format';
@@ -12,8 +14,7 @@ import { placeholdersOf } from '@/i18n/format';
  * ADR-0027 decision 4 and the architect's condition that every dictionary has
  * the same contract: the same nested keys, every value a string, and the same
  * `{placeholders}` in each value. English defines the contract (slice 2);
- * every available dictionary is checked against it, and Greek joins in
- * slice 3.
+ * Arabic and Greek (slice 3) are checked against it.
  */
 
 type Shape = Map<string, string[]>;
@@ -62,9 +63,10 @@ describe('dictionaries', () => {
     }
   });
 
-  it('are Arabic and English in slice 2, with no Greek dictionary', () => {
-    expect([...AVAILABLE_LOCALES]).toEqual(['ar', 'en']);
-    expect(() => getDictionary('el')).toThrow();
+  it('exist for all three locales since slice 3', () => {
+    expect([...AVAILABLE_LOCALES]).toEqual(['ar', 'el', 'en']);
+    expect(getDictionary('el')).toBe(el);
+    expect(shapeOf(el)).toEqual(shapeOf(en));
   });
 
   it('share one contract: same keys and same placeholders in every locale', () => {
@@ -101,6 +103,40 @@ describe('dictionaries', () => {
     const errors: Dictionary['errors'] = enErrors;
     expect(Object.keys(errors).sort()).toEqual(['body', 'code', 'label', 'retry', 'title']);
     expect(Object.keys(arErrors).sort()).toEqual(Object.keys(enErrors).sort());
+    expect(el.errors).toBe(elErrors);
+    expect(Object.keys(elErrors).sort()).toEqual(Object.keys(enErrors).sort());
+  });
+
+  it('write Greek text in Greek, without Arabic script or leftover English sentences', () => {
+    // Values that are the same in every language: the working product name,
+    // "Email", and the size units.
+    const sameAsEnglish = new Set([
+      'common.appName',
+      'login.email',
+      'staffInvite.email',
+      'knowledgeBase.sizeMegabytes',
+      'knowledgeBase.sizeKilobytes',
+    ]);
+    const valueAt = (tree: unknown, path: string) =>
+      String(
+        path
+          .split('.')
+          .reduce<unknown>((node, key) => (node as Record<string, unknown>)[key], tree),
+      );
+    for (const [path] of shapeOf(en)) {
+      const value = valueAt(el, path);
+      expect(value, path).not.toMatch(/\p{Script=Arabic}/u);
+      if (sameAsEnglish.has(path)) {
+        expect(value, path).toBe(valueAt(en, path));
+      } else {
+        expect(value, path).toMatch(/\p{Script=Greek}/u);
+        expect(value, path).not.toBe(valueAt(en, path));
+      }
+    }
+  });
+
+  it('use one Greek term for every clinician, as English does (ruling D5)', () => {
+    expect(el.booking.practitioner).toBe(el.staff.rolePractitioner);
   });
 
   it('write English text in English, without Arabic or Greek script', () => {

@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 import { Container } from '@/components/ui/Container';
 import { siteConfig } from '@/config/site';
 
@@ -8,6 +10,9 @@ export function Footer() {
         <p>
           © {new Date().getFullYear()} {siteConfig.name}. جميع الحقوق محفوظة.
         </p>
+        <Link href="/privacy" className="underline">
+          إشعار الخصوصية
+        </Link>
         <p className="font-mono text-xs">Phase 0</p>
       </Container>
     </footer>

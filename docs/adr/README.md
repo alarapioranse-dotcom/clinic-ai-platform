@@ -33,6 +33,7 @@ decisions don't need one.
 | [0025](./0025-migrating-role-no-inherit-on-function-owner-roles.md)    | The migrating role keeps SET but not INHERIT on the function-owner roles            | Accepted |
 | [0026](./0026-knowledge-document-text-extraction-and-chunking.md)      | Knowledge-document text extraction and chunking                                     | Accepted |
 | [0027](./0027-staff-ui-localization.md)                                | Staff UI localization: Arabic, Greek and English, chosen per staff member           | Accepted |
+| [0028](./0028-stuck-knowledge-documents-and-extraction-isolation.md)   | Stuck knowledge documents and extraction isolation for the pilot                    | Proposed |
 
 0010 is intentionally unassigned — reserved for the audit-log erasure strategy named as a follow-up
 in [ADR-0009](./0009-data-residency.md), not yet written.

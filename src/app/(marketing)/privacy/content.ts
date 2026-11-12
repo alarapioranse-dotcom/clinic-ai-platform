@@ -1,7 +1,7 @@
 /**
  * The public privacy notice (docs/product/04-sitemap.md, `/privacy`), in the
- * three languages of ADR-0027. It is static text: the page reads no cookie,
- * header or database.
+ * three languages of ADR-0027. The page shows the one for the visitor's
+ * language (ADR-0029) and reads no database.
  *
  * Every statement here must stay true of the deployed service. Update this
  * file in the same pull request as any change to what data is stored, where
@@ -16,7 +16,7 @@ export const PRIVACY_OPERATOR = {
   email: 'alarapioranse@gmail.com',
 } as const;
 
-export const PRIVACY_LAST_UPDATED = '2026-11-11';
+export const PRIVACY_LAST_UPDATED = '2026-11-12';
 
 export type PrivacyLocale = 'ar' | 'el' | 'en';
 
@@ -37,7 +37,7 @@ export const PRIVACY_NOTICES: Record<PrivacyLocale, PrivacyNotice> = {
     languageName: 'العربية',
     direction: 'rtl',
     title: 'إشعار الخصوصية',
-    updated: 'آخر تحديث: 11 نوفمبر 2026',
+    updated: 'آخر تحديث: 12 نوفمبر 2026',
     sections: [
       {
         heading: 'من نحن',
@@ -82,7 +82,7 @@ export const PRIVACY_NOTICES: Record<PrivacyLocale, PrivacyNotice> = {
       {
         heading: 'ملفات تعريف الارتباط (الكوكيز)',
         paragraphs: [
-          'نستخدم ملفين ضروريين فقط: ملف جلسة يُبقي موظف العيادة مسجّل الدخول، وملف يحفظ لغة الواجهة التي اختارها لمدة سنة. لا نستخدم ملفات إعلانية ولا ملفات تتبّع أو تحليلات.',
+          'نستخدم ملفين ضروريين فقط: ملف جلسة يُبقي موظف العيادة مسجّل الدخول، وملف يحفظ لمدة سنة اللغة التي يختارها أي زائر أو موظف من قائمة اللغات، ولا يُنشأ إلا عند هذا الاختيار. لا نستخدم ملفات إعلانية ولا ملفات تتبّع أو تحليلات.',
         ],
       },
       {
@@ -105,7 +105,7 @@ export const PRIVACY_NOTICES: Record<PrivacyLocale, PrivacyNotice> = {
     languageName: 'Ελληνικά',
     direction: 'ltr',
     title: 'Ενημέρωση για την προστασία δεδομένων',
-    updated: 'Τελευταία ενημέρωση: 11 Νοεμβρίου 2026',
+    updated: 'Τελευταία ενημέρωση: 12 Νοεμβρίου 2026',
     sections: [
       {
         heading: 'Ποιοι είμαστε',
@@ -150,7 +150,7 @@ export const PRIVACY_NOTICES: Record<PrivacyLocale, PrivacyNotice> = {
       {
         heading: 'Χρήση cookies',
         paragraphs: [
-          'Χρησιμοποιούμε μόνο δύο απαραίτητα cookies: ένα cookie συνεδρίας που κρατά συνδεδεμένο το μέλος του προσωπικού και ένα cookie που θυμάται τη γλώσσα που επέλεξε για έναν χρόνο. Δεν χρησιμοποιούμε διαφημιστικά cookies ούτε cookies παρακολούθησης ή στατιστικών.',
+          'Χρησιμοποιούμε μόνο δύο απαραίτητα cookies: ένα cookie συνεδρίας που κρατά συνδεδεμένο το μέλος του προσωπικού και ένα cookie που θυμάται για έναν χρόνο τη γλώσσα που επιλέγει οποιοσδήποτε επισκέπτης ή μέλος του προσωπικού από το μενού γλωσσών, και δημιουργείται μόνο όταν γίνει αυτή η επιλογή. Δεν χρησιμοποιούμε διαφημιστικά cookies ούτε cookies παρακολούθησης ή στατιστικών.',
         ],
       },
       {
@@ -173,7 +173,7 @@ export const PRIVACY_NOTICES: Record<PrivacyLocale, PrivacyNotice> = {
     languageName: 'English',
     direction: 'ltr',
     title: 'Privacy notice',
-    updated: 'Last updated: 11 November 2026',
+    updated: 'Last updated: 12 November 2026',
     sections: [
       {
         heading: 'Who we are',
@@ -218,7 +218,7 @@ export const PRIVACY_NOTICES: Record<PrivacyLocale, PrivacyNotice> = {
       {
         heading: 'Cookies',
         paragraphs: [
-          'We use only two necessary cookies: a session cookie that keeps a clinic staff member signed in, and a cookie that remembers the interface language they chose for one year. We use no advertising, tracking or analytics cookies.',
+          'We use only two necessary cookies: a session cookie that keeps a clinic staff member signed in, and a cookie that remembers for one year the language any visitor or staff member picks from the language menu; it is set only when that choice is made. We use no advertising, tracking or analytics cookies.',
         ],
       },
       {

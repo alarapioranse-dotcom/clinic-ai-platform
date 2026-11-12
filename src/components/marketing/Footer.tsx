@@ -1,19 +1,18 @@
 import Link from 'next/link';
 
 import { Container } from '@/components/ui/Container';
-import { siteConfig } from '@/config/site';
+import type { MarketingDictionary } from '@/i18n/marketing';
 
-export function Footer() {
+export function Footer({ appName, t }: { appName: string; t: MarketingDictionary['footer'] }) {
   return (
     <footer className="border-line border-t py-8">
       <Container className="text-muted flex flex-col items-center justify-between gap-3 text-sm sm:flex-row">
         <p>
-          © {new Date().getFullYear()} {siteConfig.name}. جميع الحقوق محفوظة.
+          © {new Date().getFullYear()} {appName}. {t.rights}
         </p>
         <Link href="/privacy" className="underline">
-          إشعار الخصوصية
+          {t.privacy}
         </Link>
-        <p className="font-mono text-xs">Phase 0</p>
       </Container>
     </footer>
   );

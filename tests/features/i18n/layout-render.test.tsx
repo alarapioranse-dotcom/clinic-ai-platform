@@ -7,7 +7,7 @@ import { renderServer } from './render-server';
  * ADR-0027 slices 2 and 3 at the rendered level, with the request's cookie and
  * Accept-Language header mocked and the real dictionaries (Arabic and
  * Greek and English): each root layout's document lang/dir and
- * fonts, the Arabic-only marketing document, metadata, error text, the error
+ * fonts, the marketing document (ADR-0029), metadata, error text, the error
  * and 404 routes, and the language switcher on every staff screen.
  * layout-locales.test.tsx covers the same layouts with all three locales.
  */
@@ -44,7 +44,7 @@ async function renderStaffRoot(child: React.ReactNode = <p>page</p>) {
 
 async function renderMarketingRoot(child: React.ReactNode = <p>page</p>) {
   const { default: MarketingRootLayout } = await import('@/app/(marketing)/layout');
-  return renderToStaticMarkup(MarketingRootLayout({ children: child }));
+  return renderToStaticMarkup(await MarketingRootLayout({ children: child }));
 }
 
 const visitors: [string, string | undefined, string | null][] = [
@@ -125,36 +125,50 @@ describe('staff root layout with the real dictionaries', () => {
 
 describe('marketing root layout', () => {
   for (const [name, cookie, acceptLanguage] of visitors) {
-    it(`renders an Arabic, right-to-left document with no Greek/Latin font (${name})`, async () => {
+    it(`renders the same document language and direction as the staff root (${name})`, async () => {
       request.cookie = cookie;
       request.acceptLanguage = acceptLanguage;
-      const html = await renderMarketingRoot();
-      expect(html).toMatch(/^<html lang="ar" dir="rtl">/);
-      expect(html).toContain('family=IBM+Plex+Sans+Arabic');
-      expect(html).not.toContain('Noto+Sans');
+      const marketing = await renderMarketingRoot();
+      const staff = await renderStaffRoot();
+      const opening = /^<html lang="(ar|el|en)" dir="(rtl|ltr)">/;
+      expect(marketing).toMatch(opening);
+      expect(marketing.match(opening)![0]).toBe(staff.match(opening)![0]);
+      expect(marketing.includes('family=Noto+Sans')).toBe(staff.includes('family=Noto+Sans'));
     });
   }
 
-  it('keeps the page markup it had before ADR-0027, with no wrapper of its own', async () => {
+  it('is Greek for a visitor with no preference and Arabic for an Arabic browser', async () => {
+    expect(await renderMarketingRoot()).toMatch(/^<html lang="el" dir="ltr">/);
+    request.acceptLanguage = 'ar-SA,ar;q=0.9';
+    expect(await renderMarketingRoot()).toMatch(/^<html lang="ar" dir="rtl">/);
+  });
+
+  it('keeps its page markup, with no wrapper of its own', async () => {
     const html = await renderMarketingRoot(<p>content</p>);
     expect(html).toContain('<div class="flex min-h-screen flex-col"><header');
     expect(html).not.toMatch(/<div lang=/);
   });
 
-  it('declares Arabic metadata of its own', async () => {
-    const { metadata } = await import('@/app/(marketing)/layout');
+  it('gives metadata in the visitor locale', async () => {
+    const { generateMetadata } = await import('@/app/(marketing)/layout');
     const { siteConfig } = await import('@/config/site');
-    expect(metadata.title).toBe(siteConfig.name);
-    expect(metadata.description).toBe(siteConfig.description);
-    expect(metadata.metadataBase).toEqual(new URL(siteConfig.url));
-    expect(siteConfig.locale).toBe('ar');
-    expect(siteConfig.direction).toBe('rtl');
+    request.cookie = 'ar';
+    const arabic = await generateMetadata();
+    expect(arabic.title).toBe('منصة العيادة الذكية');
+    expect(arabic.metadataBase).toEqual(new URL(siteConfig.url));
+    request.cookie = 'el';
+    expect((await generateMetadata()).description).toMatch(/\p{Script=Greek}/u);
   });
 
-  it('shows no language switcher, even to an English visitor', async () => {
-    request.cookie = 'en';
-    request.acceptLanguage = 'en';
-    expect(await renderMarketingRoot()).not.toContain('<select');
+  it('shows the language switcher in its header, with the visitor locale selected', async () => {
+    for (const locale of ['ar', 'el', 'en']) {
+      request.cookie = locale;
+      const html = await renderMarketingRoot();
+      const header = html.slice(html.indexOf('<header'), html.indexOf('</header>'));
+      expect(header).toContain('<select');
+      expect(header).toMatch(new RegExp(`<option value="${locale}" lang="${locale}" selected=""`));
+      for (const other of ['ar', 'el', 'en']) expect(header).toContain(`<option value="${other}"`);
+    }
   });
 });
 
@@ -232,29 +246,39 @@ describe('error page', () => {
     expect(english).toContain(en.errors.title);
   });
 
-  it('inside the marketing root layout, stays Arabic for an English visitor', async () => {
+  it('inside the marketing root layout, follows the visitor and shows one switcher (ADR-0029)', async () => {
     const { default: MarketingError } = await import('@/app/(marketing)/error');
     const { arErrors } = await import('@/i18n/dictionaries/ar-errors');
     const { enErrors } = await import('@/i18n/dictionaries/en-errors');
     request.cookie = 'en';
-    request.acceptLanguage = 'en';
-    const html = await renderMarketingRoot(
+    request.acceptLanguage = 'ar';
+    const english = await renderMarketingRoot(
       <MarketingError error={new Error('x')} reset={() => {}} />,
     );
-    expect(html).toContain(arErrors.title);
-    expect(html).toContain(arErrors.retry);
-    expect(html).not.toContain(enErrors.title);
-    expect(html).not.toContain('<select');
-    // The spacing wrapper is empty there, and `empty:hidden` hides it.
-    expect(html).toContain('<div class="px-6 pt-4 empty:hidden"></div>');
+    expect(english).toContain(enErrors.title);
+    expect(english).toContain(enErrors.retry);
+    expect(english).not.toContain(arErrors.title);
+    // Only the header's switcher: the error page adds none of its own.
+    expect(english.match(/<select/g)).toHaveLength(1);
+
+    request.cookie = 'ar';
+    const arabic = await renderMarketingRoot(
+      <MarketingError error={new Error('x')} reset={() => {}} />,
+    );
+    expect(arabic).toContain(arErrors.title);
+    expect(arabic).not.toContain(enErrors.title);
   });
 });
 
 describe('routes outside the staff group', () => {
-  it('the marketing error boundary is the same error page', async () => {
+  it('the marketing error boundary shows the same message as the staff one', async () => {
     const { default: MarketingError } = await import('@/app/(marketing)/error');
     const { default: StaffError } = await import('@/app/(staff)/error');
-    expect(MarketingError).toBe(StaffError);
+    const props = { error: Object.assign(new Error('x'), { digest: 'd9' }), reset: () => {} };
+    const marketing = renderToStaticMarkup(<MarketingError {...props} />);
+    const staff = renderToStaticMarkup(<StaffError {...props} />);
+    expect(staff).toBe(`<div class="px-6 pt-4 empty:hidden"></div>${marketing}`);
+    expect(marketing).toContain('d9');
   });
 
   it('a URL that matches no route is sent to the staff 404 page', async () => {

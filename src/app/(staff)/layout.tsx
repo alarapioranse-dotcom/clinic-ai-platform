@@ -11,7 +11,7 @@ import { getI18n } from '@/i18n/server';
  * Root layout of the staff UI: sign-in, invitation, the signed-in dashboard
  * and the 404 page. `lang`, `dir`, title and description follow the active
  * staff UI locale (ADR-0027 decisions 3 and 5). The marketing pages have
- * their own root layout, which is always Arabic (src/app/(marketing)/layout.tsx).
+ * their own root layout, which follows the same locale (ADR-0029).
  */
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getI18n();

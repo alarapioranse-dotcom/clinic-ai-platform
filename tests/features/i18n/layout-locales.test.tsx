@@ -7,9 +7,8 @@ import { renderServer } from './render-server';
  * The two root layouts once Greek and English dictionaries exist (slices 2
  * and 3). Slice 1 ships only Arabic, so this file stands in test-only `el`
  * and `en` dictionaries: the Arabic one with a marked app name, enough to
- * tell which dictionary a document used. It proves that the marketing
- * document stays `lang="ar" dir="rtl"` whatever the staff locale, and that
- * the staff documents follow it.
+ * tell which dictionary a document used. It proves that the staff and,
+ * since ADR-0029, the marketing documents both follow the visitor's locale.
  */
 const request = vi.hoisted(() => ({
   cookie: undefined as string | undefined,
@@ -54,7 +53,7 @@ async function renderStaffRoot() {
 
 async function renderMarketingRoot() {
   const { default: MarketingRootLayout } = await import('@/app/(marketing)/layout');
-  return renderToStaticMarkup(MarketingRootLayout({ children: <p>page</p> }));
+  return renderToStaticMarkup(await MarketingRootLayout({ children: <p>page</p> }));
 }
 
 const visitors: {
@@ -78,14 +77,19 @@ const visitors: {
 ];
 
 describe('marketing root layout with Greek and English available', () => {
-  for (const visitor of visitors) {
-    it(`stays lang="ar" dir="rtl" with Arabic fonts only (${visitor.name})`, async () => {
-      request.cookie = visitor.cookie;
-      request.acceptLanguage = visitor.acceptLanguage ?? null;
+  for (const { name, cookie, acceptLanguage, staff } of visitors) {
+    const [lang, dir, appName] = staff;
+    it(`follows the visitor like the staff UI: lang="${lang}" dir="${dir}" (${name})`, async () => {
+      request.cookie = cookie;
+      request.acceptLanguage = acceptLanguage ?? null;
       const html = await renderMarketingRoot();
-      expect(html).toMatch(/^<html lang="ar" dir="rtl">/);
-      expect(html).not.toContain('Noto+Sans');
-      expect(html).not.toContain('TEST-');
+      expect(html).toMatch(new RegExp(`^<html lang="${lang}" dir="${dir}">`));
+      if (lang === 'ar') expect(html).not.toContain('Noto+Sans');
+      else expect(html).toContain('family=Noto+Sans');
+      expect(html).toContain(appName);
+
+      const { generateMetadata } = await import('@/app/(marketing)/layout');
+      expect((await generateMetadata()).title).toBe(appName);
     });
   }
 });
@@ -141,15 +145,16 @@ describe('language switcher with Greek and English available', () => {
     });
   }
 
-  it('does not appear on the marketing error page (the marketing pages are Arabic-only)', async () => {
+  it('appears on the marketing error page too, in the visitor locale (ADR-0029)', async () => {
     request.cookie = 'en';
     const { default: MarketingRootLayout } = await import('@/app/(marketing)/layout');
     const { default: MarketingError } = await import('@/app/(marketing)/error');
     const html = await renderServer(
       MarketingRootLayout({ children: <MarketingError error={error} reset={() => {}} /> }),
     );
-    expect(html).toMatch(/^<html lang="ar" dir="rtl">/);
+    expect(html).toMatch(/^<html lang="en" dir="ltr">/);
     expect(html).toContain('<button type="button"');
-    expect(html).not.toContain('<select');
+    offersAll(html, 'en');
+    expect(html.match(/<select/g)).toHaveLength(1);
   });
 });

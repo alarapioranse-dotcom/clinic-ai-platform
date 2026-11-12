@@ -10,7 +10,7 @@ knowledge base. See `docs/` for the full plan.
 - **P2 — Authentication and authorization:** Done
 - **P3 — Conversations:** Done
 - **P4 — Appointments:** Done
-- **P5 — Knowledge base and AI:** In progress — knowledge-document storage, upload, owner/admin screens and text extraction with chunking (ADR-0026) are done; retrieval and AI replies are not built, and no AI provider is selected (ADR-0019, Proposed)
+- **P5 — Knowledge base and AI:** In progress — knowledge-document storage, upload, owner/admin screens and text extraction with chunking (ADR-0026) are done, and documents stuck in processing are failed after 15 minutes (ADR-0028); retrieval and AI replies are not built, and no AI provider is selected (ADR-0019, Proposed)
 - **Staff UI localization (ADR-0027):** All 3 slices done — staff choose Arabic, Greek or English from a switcher on every staff screen. The Greek text still needs a native speaker's review
 
 Production runs migrations 0001-0020. Current status in detail: [`CLAUDE.md`](./CLAUDE.md#status).

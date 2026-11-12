@@ -1,47 +1,107 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import PrivacyPage from '@/app/(marketing)/privacy/page';
 import {
   PRIVACY_LOCALE_ORDER,
   PRIVACY_NOTICES,
   PRIVACY_OPERATOR,
 } from '@/app/(marketing)/privacy/content';
 import { Footer } from '@/components/marketing/Footer';
+import { getMarketingDictionary } from '@/i18n/marketing';
 
 /**
  * `/privacy` (docs/product/04-sitemap.md and 06-acceptance-criteria.md):
- * static, public, and the same notice in Arabic, Greek and English.
+ * public, and since ADR-0029 shown in the visitor's language only.
  */
-const html = renderToStaticMarkup(<PrivacyPage />);
+const request = vi.hoisted(() => ({
+  cookie: undefined as string | undefined,
+  acceptLanguage: null as string | null,
+}));
+
+vi.mock('next/headers', () => ({
+  cookies: async () => ({
+    get: (name: string) =>
+      name === 'locale' && request.cookie !== undefined ? { value: request.cookie } : undefined,
+  }),
+  headers: async () => ({
+    get: (name: string) => (name === 'accept-language' ? request.acceptLanguage : null),
+  }),
+}));
+
+beforeEach(() => {
+  request.cookie = undefined;
+  request.acceptLanguage = null;
+});
+
+async function renderPrivacy() {
+  const { default: PrivacyPage } = await import('@/app/(marketing)/privacy/page');
+  return renderToStaticMarkup(await PrivacyPage());
+}
+
 const script = { ar: /\p{Script=Arabic}/u, el: /\p{Script=Greek}/u, en: /[A-Za-z]/ } as const;
 
 describe('/privacy page', () => {
-  it('renders one section per language with its own lang and dir, and a link to each', () => {
-    expect(html).toContain('<article id="ar" lang="ar" dir="rtl"');
-    expect(html).toContain('<article id="el" lang="el" dir="ltr"');
-    expect(html).toContain('<article id="en" lang="en" dir="ltr"');
-    for (const locale of PRIVACY_LOCALE_ORDER) {
-      expect(html).toContain(`<a href="#${locale}" lang="${locale}"`);
-      expect(html).toContain(PRIVACY_NOTICES[locale].title);
-    }
+  for (const locale of PRIVACY_LOCALE_ORDER) {
+    it(`shows only the ${locale} notice to a visitor whose locale is ${locale}`, async () => {
+      request.cookie = locale;
+      const html = await renderPrivacy();
+      expect(html.match(/<article/g)).toHaveLength(1);
+      expect(html.match(/<h1/g)).toHaveLength(1);
+      expect(html).toContain(`>${PRIVACY_NOTICES[locale].title}</h1>`);
+      expect(html.match(/<h2/g)).toHaveLength(PRIVACY_NOTICES[locale].sections.length);
+      for (const other of PRIVACY_LOCALE_ORDER) {
+        if (other === locale) continue;
+        expect(html).not.toContain(PRIVACY_NOTICES[other].sections[0]!.heading);
+        expect(html).not.toContain(PRIVACY_NOTICES[other].updated);
+      }
+    });
+  }
+
+  it('follows Accept-Language without a cookie and falls back to Greek', async () => {
+    request.acceptLanguage = 'ar-SA,ar;q=0.9';
+    expect(await renderPrivacy()).toContain(PRIVACY_NOTICES.ar.updated);
+    request.acceptLanguage = 'fr-FR,fr;q=0.9';
+    expect(await renderPrivacy()).toContain(PRIVACY_NOTICES.el.updated);
   });
 
-  it('is static: it reads no cookie, header, environment value or database', () => {
+  it('titles the tab in the visitor language', async () => {
+    const { generateMetadata } = await import('@/app/(marketing)/privacy/page');
+    request.cookie = 'en';
+    expect((await generateMetadata()).title).toBe('Privacy notice');
+    request.cookie = 'ar';
+    expect((await generateMetadata()).title).toBe(PRIVACY_NOTICES.ar.title);
+  });
+
+  it('reads no environment value or database, and is not a client component', () => {
     for (const file of ['page.tsx', 'content.ts']) {
       const source = readFileSync(
         join(__dirname, '..', '..', '..', 'src', 'app', '(marketing)', 'privacy', file),
         'utf8',
       );
-      expect(source).not.toMatch(/next\/headers|cookies\(|headers\(|process\.env|@\/lib\/(db|env)/);
+      expect(source).not.toMatch(/process\.env|@\/lib\/(db|env)/);
       expect(source).not.toMatch(/['"]use client['"]/);
     }
   });
 
-  it('is linked from the marketing footer', () => {
-    expect(renderToStaticMarkup(<Footer />)).toContain('href="/privacy"');
+  it('is linked from the marketing footer in every language', () => {
+    for (const locale of PRIVACY_LOCALE_ORDER) {
+      const t = getMarketingDictionary(locale).footer;
+      const html = renderToStaticMarkup(<Footer appName="X" t={t} />);
+      expect(html).toContain('href="/privacy"');
+      expect(html).toContain(t.privacy);
+    }
+  });
+
+  it('says the language cookie is set for any visitor who picks a language', () => {
+    const cookies = (locale: (typeof PRIVACY_LOCALE_ORDER)[number]) =>
+      PRIVACY_NOTICES[locale].sections.find((s) => /cookies|الكوكيز/i.test(s.heading))!
+        .paragraphs[0]!;
+    expect(cookies('en')).toMatch(/any visitor or staff member/);
+    expect(cookies('en')).toMatch(/only when that choice is made/);
+    expect(cookies('ar')).toMatch(/أي زائر أو موظف/);
+    expect(cookies('el')).toMatch(/οποιοσδήποτε επισκέπτης/);
   });
 });
 

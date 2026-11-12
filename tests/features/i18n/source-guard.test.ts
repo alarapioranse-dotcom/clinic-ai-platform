@@ -8,9 +8,10 @@ import { describe, expect, it } from 'vitest';
  * Scope = what ADR-0027 decision 2 localizes: the staff route group (its
  * root layout, the (app) and (auth) groups, the error and not-found pages),
  * the shared root document, the app shell components, the environment
- * notice, and the app navigation config. Out of scope, by name:
- * the marketing pages (Arabic-only by ADR-0027) and everything else under
- * src that is not UI (for example the knowledge-base chunker, whose Arabic
+ * notice, and the app navigation config. Since ADR-0029 the public pages
+ * are in scope too: their layout, pages and components (their text lives in
+ * src/i18n/marketing and in the privacy notice's content.ts). Out of scope:
+ * everything else under src that is not UI (for example the knowledge-base chunker, whose Arabic
  * characters are sentence punctuation it splits on).
  */
 const ROOT = join(__dirname, '..', '..', '..');
@@ -21,6 +22,11 @@ const SCOPE = [
   'src/components/EnvironmentNotice.tsx',
   'src/config/environment-notice.ts',
   'src/config/navigation.ts',
+  'src/app/(marketing)/layout.tsx',
+  'src/app/(marketing)/page.tsx',
+  'src/app/(marketing)/error.tsx',
+  'src/app/(marketing)/privacy/page.tsx',
+  'src/components/marketing',
 ];
 
 function filesUnder(path: string): string[] {

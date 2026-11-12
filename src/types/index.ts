@@ -12,20 +12,3 @@ export interface NavItem {
    */
   roles?: readonly StaffRole[];
 }
-
-export interface SiteConfig {
-  name: string;
-  description: string;
-  locale: 'ar';
-  direction: 'rtl';
-  url: string;
-}
-
-export type LaunchPhaseStatus = 'done' | 'in-progress' | 'planned';
-
-export interface LaunchPhase {
-  id: string;
-  title: string;
-  description: string;
-  status: LaunchPhaseStatus;
-}

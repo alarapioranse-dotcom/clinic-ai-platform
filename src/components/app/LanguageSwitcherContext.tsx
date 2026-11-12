@@ -18,9 +18,8 @@ const SwitcherContext = createContext<SwitcherProps | null>(null);
  * Hands the language switcher's props to client components that cannot
  * render the server-side LanguageSwitcherSlot: the staff error page
  * (src/app/(staff)/error.tsx), which replaces the (app) and (auth) layouts
- * and with them their switcher. The staff root layout provides it; the
- * marketing root layout does not, so the marketing error page shows no
- * switcher (the marketing pages are Arabic-only).
+ * and with them their switcher, and the marketing header (ADR-0029). Both
+ * root layouts provide it.
  */
 export function LanguageSwitcherProvider({
   value,

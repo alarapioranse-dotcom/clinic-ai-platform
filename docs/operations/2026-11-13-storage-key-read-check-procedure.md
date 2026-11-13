@@ -1,6 +1,7 @@
 # Production storage-key read check (Scaleway, from Termux)
 
-**Status:** not yet executed. Run only with the Owner's explicit approval. **Scope:** the production
+**Status:** executed by the Owner on 2026-11-13 from Termux, every result as expected; see
+[Execution record](#execution-record-2026-11-13) at the end. **Scope:** the production
 knowledge-document bucket in Scaleway `fr-par`, reached with the production application's own
 storage key (the `SCALEWAY_*` values of the Render web service `clinic-ai-platform`), from the
 Owner's Termux. No database is touched. This file contains no secret: the key id and secret are
@@ -40,8 +41,18 @@ stop and report either. If step 7's delete returns `403`, the synthetic file sta
 
 ### 1. Values (Render dashboard → `clinic-ai-platform` → Environment)
 
+Termux must not receive the values in the same paste as the commands that ask for them: a pasted
+block feeds its own next lines to `read` as input. So this step is three separate pastes. First
+clear anything left from an earlier attempt:
+
 ```sh
-mkdir -p ~/s3c && cd ~/s3c
+unset S3_ENDPOINT S3_REGION S3_BUCKET S3_KEY_ID S3_SECRET; history -c; history -w; clear; echo RESET-DONE
+```
+
+Then write the input script (it asks for nothing yet):
+
+```sh
+mkdir -p ~/s3c && cd ~/s3c && cat > in.sh <<'EOF'
 read -rp "SCALEWAY_S3_ENDPOINT: " S3_ENDPOINT
 read -rp "SCALEWAY_S3_REGION: " S3_REGION
 read -rp "SCALEWAY_S3_BUCKET: " S3_BUCKET
@@ -54,6 +65,14 @@ case "$S3_ENDPOINT|$S3_REGION" in
   *) echo "STOP: unexpected endpoint or region" ;;
 esac
 [ -n "$S3_BUCKET" ] && [ -n "$S3_KEY_ID" ] && [ -n "$S3_SECRET" ] && echo "VALUES-SET bucket=$S3_BUCKET" || echo "STOP: a value is empty"
+EOF
+echo FILE-READY
+```
+
+Then run it alone, and paste each value (copy button in Render) when it is asked for:
+
+```sh
+source ~/s3c/in.sh
 ```
 
 Expected: `ENDPOINT-OK` and `VALUES-SET bucket=<name>`.
@@ -103,7 +122,7 @@ Expected: `DELETE 204`, `HEAD-AFTER 404`.
 ### 5. Clean up
 
 ```sh
-unset S3_ENDPOINT S3_REGION S3_BUCKET S3_KEY_ID S3_SECRET S3_OBJ S3_ETAG && unset -f s3 && cd ~ && rm -rf ~/s3c && echo CLEARED
+unset S3_ENDPOINT S3_REGION S3_BUCKET S3_KEY_ID S3_SECRET S3_OBJ S3_ETAG && unset -f s3 && cd ~ && rm -rf ~/s3c && history -c && history -w && echo CLEARED
 ```
 
 ## Rehearsal (2026-11-13)
@@ -114,3 +133,25 @@ the stand-in requires) against a local S3-compatible stand-in (moto server) with
 `PREFIX-MATCHES`; `WRONG-ETAG 412`; `FULL-GET 200`, `FULL-MATCHES`; `ANONYMOUS 403`; `DELETE 204`,
 `HEAD-AFTER 404`. The stand-in does not check signatures, so the rehearsal proves the commands and
 the expected outputs, not Scaleway's behaviour — that is what the production run is for.
+
+## Execution record (2026-11-13)
+
+Run by the Owner from Termux after #141 was merged (main `f5b8a6d`):
+
+- First attempt at step 1: the original single block, pasted together with its prompts, fed its own
+  lines to `read`, so the values typed afterwards ran as shell commands (`command not found`).
+  Nothing was sent anywhere and nothing changed in Scaleway or Render; the shell history was
+  cleared (`history -c; history -w`). Step 1 above is now three separate pastes for that reason.
+- Step 1 (three pastes): `ENDPOINT-OK`, `VALUES-SET bucket=clinic-ai-knowledge-docs`.
+- Step 2: `PUT 200`; HeadObject `HTTP/2 200`, `content-length: 61`, `content-type: application/pdf`,
+  `etag: "459f771a580c77a41388d4c4c4beb6f4"`.
+- Step 3: `RANGE-GET 206`, `PREFIX-MATCHES`; `WRONG-ETAG 412`; `FULL-GET 200`, `FULL-MATCHES`;
+  `ANONYMOUS 403`.
+- Step 4: `DELETE 204`, `HEAD-AFTER 404` for
+  `ops-checks/storage-read-check-20261113T212426Z.pdf`; the bucket holds nothing from this check.
+- Step 5: `CLEARED`.
+
+Result: the production application's storage key can write, read (ranged and whole, bound to the
+ETag) and delete objects; Scaleway honours `Range` and `If-Match` and returns an ETag; the bucket
+refuses anonymous reads. This does not exercise the application's own SDK code in production; the
+first legitimate upload will.

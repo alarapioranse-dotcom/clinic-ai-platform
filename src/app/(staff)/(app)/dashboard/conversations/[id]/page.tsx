@@ -5,9 +5,17 @@ import { ConversationDetail } from './ConversationDetail';
 /**
  * Server shell of the conversation screen (ADR-0027 slice 1): resolves the
  * locale and passes the client component only the two namespaces it renders.
- * Fetching, roles and replies stay in ConversationDetail, unchanged.
+ * Fetching, roles and replies stay in ConversationDetail, unchanged. ADR-0030
+ * adds the knowledge search namespace.
  */
 export default async function ConversationDetailPage() {
   const { locale, t } = await getI18n();
-  return <ConversationDetail locale={locale} t={t.conversationDetail} bookingT={t.booking} />;
+  return (
+    <ConversationDetail
+      locale={locale}
+      t={t.conversationDetail}
+      bookingT={t.booking}
+      searchT={t.knowledgeSearch}
+    />
+  );
 }

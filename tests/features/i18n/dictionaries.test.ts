@@ -91,6 +91,9 @@ describe('dictionaries', () => {
       'to',
       'role',
       'email',
+      // ADR-0030: the knowledge search result count and file name.
+      'count',
+      'filename',
     ]);
     for (const [path, placeholders] of shapeOf(en)) {
       for (const name of placeholders) expect(allowed.has(name), `${path}: {${name}}`).toBe(true);

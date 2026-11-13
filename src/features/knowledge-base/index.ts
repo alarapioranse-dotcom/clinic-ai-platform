@@ -11,8 +11,9 @@
  * upload via a presigned PUT, file bytes never passing through this process
  * — with the single, bounded exception ADR-0021 records: at completion the
  * server reads at most the first 1024 bytes of the stored object, solely to
- * verify the PDF signature. No extraction, chunking, embedding, pgvector, or AI code exists in this
- * feature yet — that remains a later slice.
+ * verify the PDF signature. ADR-0026 added text extraction and chunking, and
+ * ADR-0030 adds `searchKnowledgeBase`, keyword search inside PostgreSQL. No
+ * embedding, pgvector or AI code exists in this feature yet.
  *
  * Every function here is tenant-scoped via `withTenantContext`: the caller
  * supplies `clinicId` (resolved elsewhere — a session, a test fixture — this
@@ -28,13 +29,15 @@ import {
   DuplicateKnowledgeDocumentError,
   listStuckKnowledgeDocumentIds,
   markKnowledgeDocumentFailed,
+  searchReadyKnowledgeChunks,
   type KnowledgeDocument,
   type KnowledgeDocumentStatus,
+  type KnowledgeSearchHit,
 } from './repository';
 import { createPresignedUploadUrl, headObject, readObjectPrefix } from './storage';
 import { hasPdfSignature, PDF_SIGNATURE_LENGTH } from './pdf-signature';
 
-export type { KnowledgeDocument, KnowledgeDocumentStatus };
+export type { KnowledgeDocument, KnowledgeDocumentStatus, KnowledgeSearchHit };
 export { processKnowledgeDocument, type ProcessingOutcome } from './processing';
 export { DuplicateKnowledgeDocumentError };
 
@@ -148,6 +151,48 @@ export async function getKnowledgeDocumentsForClinic(
 ): Promise<KnowledgeDocument[]> {
   await failStuckKnowledgeDocuments(clinicId);
   return withTenantContext(clinicId, (client) => listKnowledgeDocuments(client));
+}
+
+/** ADR-0030 decision 1: at most this many results per search. */
+export const KNOWLEDGE_SEARCH_MAX_RESULTS = 10;
+
+/** ADR-0030 decision 6: a query is 1 to this many characters after trimming. */
+export const KNOWLEDGE_SEARCH_MAX_QUERY_LENGTH = 200;
+
+/**
+ * Thrown by `searchKnowledgeBase` for an empty or over-long query. The
+ * message is fixed and never contains the query (ADR-0030 decision 6).
+ */
+export class InvalidKnowledgeSearchQueryError extends Error {
+  constructor() {
+    super(`query must be 1 to ${KNOWLEDGE_SEARCH_MAX_QUERY_LENGTH} characters after trimming.`);
+    this.name = 'InvalidKnowledgeSearchQueryError';
+  }
+}
+
+export type KnowledgeSearchResult =
+  { outcome: 'results'; hits: KnowledgeSearchHit[] } | { outcome: 'no_terms' };
+
+/**
+ * ADR-0030: staff keyword search over the clinic's own ready documents. No AI
+ * model, no embedding, no external call. `clinicId` comes from the caller's
+ * verified session; RLS is the isolation boundary. The query may contain a
+ * patient's words, so it is treated as patient data: it is never logged,
+ * stored or put in an error message (decision 6).
+ */
+export async function searchKnowledgeBase(
+  clinicId: string,
+  rawQuery: string,
+): Promise<KnowledgeSearchResult> {
+  const query = rawQuery.trim();
+  const length = [...query].length;
+  if (length < 1 || length > KNOWLEDGE_SEARCH_MAX_QUERY_LENGTH) {
+    throw new InvalidKnowledgeSearchQueryError();
+  }
+  const hits = await withTenantContext(clinicId, (client) =>
+    searchReadyKnowledgeChunks(client, query, KNOWLEDGE_SEARCH_MAX_RESULTS),
+  );
+  return hits === null ? { outcome: 'no_terms' } : { outcome: 'results', hits };
 }
 
 export async function getKnowledgeDocument(

@@ -263,3 +263,96 @@ export async function listStuckKnowledgeDocumentIds(
   );
   return result.rows.map((row) => row.id);
 }
+
+/** One search hit: a chunk of a ready document, its text exactly as stored. */
+export interface KnowledgeSearchHit {
+  documentId: string;
+  filename: string;
+  ordinal: number;
+  content: string;
+}
+
+/**
+ * ADR-0030 decision 4: each search runs with this statement timeout, set
+ * locally in its transaction, so a slow search fails cleanly instead of
+ * holding a connection.
+ */
+export const KNOWLEDGE_SEARCH_STATEMENT_TIMEOUT = '5s';
+
+/**
+ * ADR-0030 decisions 1, 2 and 4: keyword search over the caller's clinic's
+ * ready documents, as `app_user` inside the caller's tenant transaction (RLS
+ * and FORCE RLS decide which rows exist; there is no clinic filter here).
+ *
+ * A chunk matches when `websearch_to_tsquery` of the query matches it under
+ * any of the `arabic`, `greek` or `english` configurations; results are
+ * ordered by the highest `ts_rank` across the three, then by document and
+ * chunk order, and capped at `limit`. Vectors are computed at query time: no
+ * index exists (decision 4).
+ *
+ * Returns `null` when the query reduces to no search term in any of the three
+ * configurations (for example only stop words), so the caller can say so
+ * instead of showing an empty list. The query is a bind parameter only; it is
+ * never logged or interpolated.
+ */
+export async function searchReadyKnowledgeChunks(
+  client: PoolClient,
+  query: string,
+  limit: number,
+): Promise<KnowledgeSearchHit[] | null> {
+  await client.query("SELECT pg_catalog.set_config('statement_timeout', $1, true)", [
+    KNOWLEDGE_SEARCH_STATEMENT_TIMEOUT,
+  ]);
+
+  const terms = await client.query<{ has_terms: boolean }>(
+    `SELECT pg_catalog.numnode(pg_catalog.websearch_to_tsquery('pg_catalog.arabic', $1)) > 0
+         OR pg_catalog.numnode(pg_catalog.websearch_to_tsquery('pg_catalog.greek', $1)) > 0
+         OR pg_catalog.numnode(pg_catalog.websearch_to_tsquery('pg_catalog.english', $1)) > 0
+         AS has_terms`,
+    [query],
+  );
+  if (!terms.rows[0]?.has_terms) {
+    return null;
+  }
+
+  const result = await client.query<{
+    document_id: string;
+    filename: string;
+    ordinal: number;
+    content: string;
+  }>(
+    `WITH q AS (
+       SELECT pg_catalog.websearch_to_tsquery('pg_catalog.arabic', $1) AS ar,
+              pg_catalog.websearch_to_tsquery('pg_catalog.greek', $1) AS el,
+              pg_catalog.websearch_to_tsquery('pg_catalog.english', $1) AS en
+     ),
+     scored AS (
+       SELECT c.document_id, d.filename, d.created_at, c.ordinal, c.content,
+              pg_catalog.to_tsvector('pg_catalog.arabic', c.content) AS v_ar,
+              pg_catalog.to_tsvector('pg_catalog.greek', c.content) AS v_el,
+              pg_catalog.to_tsvector('pg_catalog.english', c.content) AS v_en
+         FROM knowledge_document_chunks c
+         JOIN knowledge_documents d
+           ON d.id = c.document_id AND d.clinic_id = c.clinic_id
+        WHERE d.status = 'ready'
+     )
+     SELECT s.document_id, s.filename, s.ordinal, s.content
+       FROM scored s, q
+      WHERE s.v_ar @@ q.ar OR s.v_el @@ q.el OR s.v_en @@ q.en
+      ORDER BY GREATEST(
+                 CASE WHEN s.v_ar @@ q.ar THEN pg_catalog.ts_rank(s.v_ar, q.ar) ELSE 0 END,
+                 CASE WHEN s.v_el @@ q.el THEN pg_catalog.ts_rank(s.v_el, q.el) ELSE 0 END,
+                 CASE WHEN s.v_en @@ q.en THEN pg_catalog.ts_rank(s.v_en, q.en) ELSE 0 END
+               ) DESC,
+               s.created_at, s.document_id, s.ordinal
+      LIMIT $2`,
+    [query, limit],
+  );
+
+  return result.rows.map((row) => ({
+    documentId: row.document_id,
+    filename: row.filename,
+    ordinal: row.ordinal,
+    content: row.content,
+  }));
+}

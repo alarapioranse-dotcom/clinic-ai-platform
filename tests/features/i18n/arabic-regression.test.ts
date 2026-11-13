@@ -14,7 +14,8 @@ import slice1 from '../../fixtures/ar-dictionary-slice-1.json';
  * they label values that were shown raw before.
  * ADR-0030 decision 5: `knowledgeBase.statusReady` now says the document is
  * ready for search, because since migration 0021 a document is `ready` once it
- * is searchable, not once the assistant uses it.
+ * is searchable, not once the assistant uses it. ADR-0030 also adds the
+ * `knowledgeSearch` namespace (decision 5), all of it Arabic.
  */
 type Tree = { [key: string]: string | Tree };
 
@@ -35,6 +36,7 @@ const D2 = 'conversationDetail.replyFailed';
 const ADR_0030 = 'knowledgeBase.statusReady';
 const D3_PREFIXES = ['conversationDetail.senderTypes.', 'conversationDetail.appointmentStatuses.'];
 const isD3 = (path: string) => D3_PREFIXES.some((prefix) => path.startsWith(prefix));
+const ADR_0030_PREFIX = 'knowledgeSearch.';
 
 describe('Arabic dictionary compared with slice 1', () => {
   it('reads a non-trivial slice 1 fixture', () => {
@@ -58,11 +60,12 @@ describe('Arabic dictionary compared with slice 1', () => {
     expect(after.get(ADR_0030)).toBe('جاهز للبحث');
   });
 
-  it('adds only the D3 labels, and every one of them is Arabic', () => {
+  it('adds only the D3 labels and the ADR-0030 search strings, and every one of them is Arabic', () => {
     const added = [...after.keys()].filter((path) => !before.has(path));
-    expect(added.length).toBe(6);
+    expect(added.filter(isD3).length).toBe(6);
+    expect(added.filter((path) => path.startsWith(ADR_0030_PREFIX)).length).toBe(13);
     for (const path of added) {
-      expect(isD3(path), path).toBe(true);
+      expect(isD3(path) || path.startsWith(ADR_0030_PREFIX), path).toBe(true);
       expect(after.get(path), path).toMatch(/\p{Script=Arabic}/u);
     }
   });

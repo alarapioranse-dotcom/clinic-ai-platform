@@ -9,6 +9,8 @@ import type { Locale } from '@/i18n/config';
 import type { Dictionary } from '@/i18n/dictionaries';
 import { format, labelOf } from '@/i18n/format';
 
+import { KnowledgeSearch } from '../../knowledge-search/KnowledgeSearch';
+
 import { BookAppointment } from './BookAppointment';
 
 interface MessageRow {
@@ -69,10 +71,12 @@ export function ConversationDetail({
   locale,
   t,
   bookingT,
+  searchT,
 }: {
   locale: Locale;
   t: Dictionary['conversationDetail'];
   bookingT: Dictionary['booking'];
+  searchT: Dictionary['knowledgeSearch'];
 }) {
   const params = useParams<{ id: string }>();
   const conversationId = params.id;
@@ -252,6 +256,10 @@ export function ConversationDetail({
               t={bookingT}
             />
           )}
+
+          {/* ADR-0030 decision 5: every signed-in staff role may search; the API
+              is the boundary (it requires a valid session, nothing more). */}
+          {role !== null && <KnowledgeSearch t={searchT} />}
         </div>
       )}
     </div>

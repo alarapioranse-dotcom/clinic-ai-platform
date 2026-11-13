@@ -111,3 +111,12 @@ credential.
 - No other feature (`appointments`, `patients`, `conversations`) may import
   from this feature's internals. Only `./index.ts` is a valid import target.
 - `process.env` is never read here — configuration comes from `src/lib/env.ts`.
+
+## Search (ADR-0030)
+
+`searchKnowledgeBase(clinicId, query)` searches the clinic's `ready` documents by keyword, with
+PostgreSQL full-text search under the `arabic`, `greek` and `english` configurations, computed at
+query time (no index), at most 10 results, with a 5-second statement timeout local to the
+transaction. It calls no AI model and no external service. The query may hold a patient's words: it
+is never logged, stored or put in an error message. `POST /api/knowledge-search` exposes it to every
+signed-in staff role; the search box is on the knowledge-base and conversation screens.

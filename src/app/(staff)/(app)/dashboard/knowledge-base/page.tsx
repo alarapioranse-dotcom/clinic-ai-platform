@@ -1,5 +1,6 @@
 import { getI18n } from '@/i18n/server';
 
+import { KnowledgeSearch } from '../knowledge-search/KnowledgeSearch';
 import { KnowledgeBaseAccessDenied } from './AccessDenied';
 import { KnowledgeDocumentsList } from './KnowledgeDocumentsList';
 import { canManageKnowledgeBase } from './access';
@@ -22,6 +23,7 @@ export default async function KnowledgeBasePage() {
       <h1 className="font-display text-2xl font-bold">{t.knowledgeBase.title}</h1>
       <p className="text-muted mt-2 text-sm">{t.knowledgeBase.intro}</p>
       <KnowledgeDocumentsList locale={locale} t={t.knowledgeBase} />
+      <KnowledgeSearch t={t.knowledgeSearch} />
     </div>
   );
 }

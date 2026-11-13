@@ -9,7 +9,9 @@ Proposed
 2026-09-20 (first draft); revised 2026-10-18 to record the Mistral privacy-team evidence of
 2026-09-30 and the owner rulings R1-R4 of 2026-10-18; revised 2026-10-23 to record vendor
 correspondence of 2026-10-19 to 2026-10-23 and the Scaleway binding documents read; revised
-2026-10-27 to record Scaleway correspondence of 2026-10-26 and 2026-10-27.
+2026-10-27 to record Scaleway correspondence of 2026-10-26 and 2026-10-27; revised 2026-11-13 to
+record the OVHcloud answer of 2026-11-05 and the conflict found between OVHcloud's product page and
+its HDS register.
 
 ## Phase
 
@@ -433,6 +435,60 @@ Scaleway therefore still does **not** pass gate 1 (Contract). It remains the can
 evidence gathered so far; that is a statement about evidence, not a selection. As of 2026-10-27,
 OVHcloud and IONOS have sent no substantive answer, and Mistral, which did not answer by the owner's
 2026-10-25 deadline, stays BLOCKED under R2.
+
+### Vendor correspondence and public pages, 2026-11-05 to 2026-11-13 (OVHcloud)
+
+OVHcloud answered the owner's request of 2026-10-19 (`dpo@ovh.com`, support case `CS16972065`) on
+2026-11-05, in the message that closed the case. Type: correspondence only. What OVHcloud stated:
+
+- **Sub-processors.** No subcontractors are used in connection with AI Endpoints.
+- **Logging and retention.** No request content is ever logged, including for SOC, abuse or
+  troubleshooting purposes. Only basic network data, the request ID, the token ID, input and output
+  token counts and the model are stored. Retention periods for those were not given.
+- **Storage.** The contract states that AI Endpoints includes no backup or storage of Inputs and
+  Outputs, even temporary, that OVHcloud has no knowledge of them, and that it neither reuses nor
+  backs them up. The clause was not cited.
+- **Model providers and location.** The models are open-weight models run on OVHcloud
+  infrastructure; model providers have no access to the service, queries or responses. All data
+  remains within OVHcloud infrastructure in France.
+- **Structured output.** AI Endpoints models support structured output in JSON-Schema format.
+
+Public pages read on 2026-11-13 (marketing and documentation, not binding):
+
+- The AI Endpoints product page (`https://ovhcloud.com/en/public-cloud/ai-endpoints/`) describes the
+  service as "ISO 27001, SOC 2 Type II, and HDS (health data) certified", states "Zero data
+  retention: We keep only the data required for billing purposes", that data is never used for
+  training, and that the service is hosted and run in the European Union.
+- The page "OVHcloud products HDS certification" (`docs.ovhcloud.com`, HDS v2018 certificate) lists
+  the certified products; **AI Endpoints is not among them**, and HDS products require a Business or
+  Enterprise support level and the HDS option to be activated. The two OVHcloud pages therefore
+  conflict on whether AI Endpoints is HDS-certified.
+- OVHcloud documentation names the binding terms as the "AI Endpoints Conditions"
+  (`48743bf-AI_Endpoints-ALL-1.1.pdf`) and Appendix 10 of the Public Cloud Special Conditions. Neither
+  document was opened for this section (the file host was not reachable from the working
+  environment), so no clause is quoted here.
+
+Consequences for the evidence model: nothing moves to VERIFIED. On retention, OVHcloud's stated
+position (no content kept at all) is stronger than Scaleway's (up to 14 days in error or abuse
+cases, not yet binding), but it rests on correspondence until the clause is read. On the HDS
+question for the external adviser, OVHcloud could be materially different from Scaleway (whose
+Generative APIs are not HDS-certified), but only if OVHcloud confirms in writing that its HDS
+certificate covers AI Endpoints. The residency statement ("France") is narrower than the product
+page ("European Union"); which one is contractual is open.
+
+Follow-ups drafted for the owner on 2026-11-13 (not yet sent when this section was written):
+
+- **OVHcloud** (`dpo@ovh.com`, referencing `CS16972065`): whether the HDS certificate covers AI
+  Endpoints, under which version and activities, and with which prerequisites; which documents and
+  versions govern the service and which clause excludes storage of Inputs and Outputs; retention of
+  the metadata that is kept; the applicable DPA and whether it allows any transfer outside the
+  EU/EEA.
+- **Scaleway** (privacy thread `4PGX1W-23W1L`): acceptance of its offer to make the 14-day ceiling
+  binding by a DPA schedule or amendment, and a request for the text; written confirmation on
+  whether security-incident records can contain request or response content; the DPA version and
+  the sub-processor register link.
+
+Neither OVHcloud nor Scaleway passes gate 1 (Contract) as of 2026-11-13. No provider is selected.
 
 ### Classification: every mandatory constraint is VERIFICATION REQUIRED, for every candidate
 

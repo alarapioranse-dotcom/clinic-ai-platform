@@ -10,7 +10,10 @@ export function EnvironmentNotice({ notices }: { notices: EnvironmentNoticeMessa
   if (notice === null) return null;
 
   return (
-    <div role="note" className="bg-marker text-ink px-6 py-2 text-center text-sm font-medium">
+    <div
+      role="note"
+      className="bg-marker text-marker-ink px-6 py-2 text-center text-sm font-medium"
+    >
       {notice}
     </div>
   );

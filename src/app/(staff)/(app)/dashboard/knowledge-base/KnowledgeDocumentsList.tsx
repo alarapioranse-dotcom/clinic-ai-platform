@@ -47,9 +47,9 @@ function statusLabel(status: KnowledgeDocumentItem['status'], t: Dictionary['kno
 }
 
 const STATUS_CLASSES: Record<KnowledgeDocumentItem['status'], string> = {
-  processing: 'border-line text-ink border bg-paper',
+  processing: 'bg-sky text-sky-ink',
   ready: 'bg-mint text-pine-deep',
-  failed: 'bg-red-50 text-red-800',
+  failed: 'bg-marker text-marker-ink',
 };
 
 function formatSize(bytes: number, locale: Locale, t: Dictionary['knowledgeBase']): string {

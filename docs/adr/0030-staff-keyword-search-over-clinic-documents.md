@@ -2,7 +2,8 @@
 
 ## Status
 
-Proposed — 2026-11-13.
+Accepted — 2026-11-13. Approved by the owner in a comment on
+[PR #135](https://github.com/alarapioranse-dotcom/clinic-ai-platform/pull/135#issuecomment-6857426609).
 
 ## Date
 
@@ -132,7 +133,7 @@ Facts this decision rests on, all on `main` at `2978fa7` unless stated:
   hosting and sub-processor statements do not change; the implementation pull request checks
   `src/app/(marketing)/privacy/content.ts` and updates it only if a sentence there becomes untrue.
 - Implementation is staged, each step under Gates 1-5; only the Owner merges:
-  1. **This ADR**, Proposed, with its index row. No code.
+  1. **This ADR** with its index row. No code.
   2. **Migration 0021** and its PostgreSQL tests: the function sets `ready` with its chunk set and
      rolls both back together; the ADR-0026 race and isolation tests still pass; the owner role
      gained `UPDATE (ready_at)` and nothing else; the backfill moves only documents with a chunk

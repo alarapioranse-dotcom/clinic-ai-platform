@@ -12,6 +12,9 @@ import slice1 from '../../fixtures/ar-dictionary-slice-1.json';
  * D2: `conversationDetail.replyFailed` was shown in English and is now Arabic.
  * D3: `conversationDetail.senderTypes` and `.appointmentStatuses` are new;
  * they label values that were shown raw before.
+ * ADR-0030 decision 5: `knowledgeBase.statusReady` now says the document is
+ * ready for search, because since migration 0021 a document is `ready` once it
+ * is searchable, not once the assistant uses it.
  */
 type Tree = { [key: string]: string | Tree };
 
@@ -29,6 +32,7 @@ const before = flatten(slice1 as Tree);
 const after = flatten(ar as unknown as Tree);
 
 const D2 = 'conversationDetail.replyFailed';
+const ADR_0030 = 'knowledgeBase.statusReady';
 const D3_PREFIXES = ['conversationDetail.senderTypes.', 'conversationDetail.appointmentStatuses.'];
 const isD3 = (path: string) => D3_PREFIXES.some((prefix) => path.startsWith(prefix));
 
@@ -37,9 +41,9 @@ describe('Arabic dictionary compared with slice 1', () => {
     expect(before.size).toBeGreaterThan(200);
   });
 
-  it('keeps every slice 1 string byte for byte, except D2', () => {
+  it('keeps every slice 1 string byte for byte, except D2 and the ADR-0030 label', () => {
     for (const [path, text] of before) {
-      if (path === D2) continue;
+      if (path === D2 || path === ADR_0030) continue;
       expect(after.get(path), path).toBe(text);
     }
   });
@@ -47,6 +51,11 @@ describe('Arabic dictionary compared with slice 1', () => {
   it('D2: translates the one string slice 1 showed in English', () => {
     expect(before.get(D2)).toBe('Message failed to send');
     expect(after.get(D2)).toBe('تعذّر إرسال الرسالة');
+  });
+
+  it('ADR-0030: the ready label says ready for search', () => {
+    expect(before.get(ADR_0030)).toBe('جاهز');
+    expect(after.get(ADR_0030)).toBe('جاهز للبحث');
   });
 
   it('adds only the D3 labels, and every one of them is Arabic', () => {

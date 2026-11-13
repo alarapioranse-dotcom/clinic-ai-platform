@@ -155,7 +155,7 @@ export const en = {
     columnUploaded: 'Uploaded',
     columnStatus: 'Status',
     statusProcessing: 'Processing',
-    statusReady: 'Ready',
+    statusReady: 'Ready for search',
     statusFailed: 'Processing failed',
     sizeMegabytes: '{size} MB',
     sizeKilobytes: '{size} KB',

@@ -154,7 +154,7 @@ export const el: Dictionary = {
     columnUploaded: 'Μεταφορτώθηκε',
     columnStatus: 'Κατάσταση',
     statusProcessing: 'Σε επεξεργασία',
-    statusReady: 'Έτοιμο',
+    statusReady: 'Έτοιμο για αναζήτηση',
     statusFailed: 'Η επεξεργασία απέτυχε',
     sizeMegabytes: '{size} MB',
     sizeKilobytes: '{size} KB',

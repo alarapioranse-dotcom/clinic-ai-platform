@@ -127,13 +127,14 @@ After the response (processKnowledgeDocument, one document at a time per process
       bytes actually read.
   4b. Extract the text in a worker_threads worker (PDF.js), canonicalise it (canon-1) and split
       it into chunks (ADR-0026 sections 1, 2, 4 and 5).
-  4c. On success: store_knowledge_document_chunks(...) writes the whole chunk set; the document
-      stays 'processing' (Owner ruling D9).
+  4c. On success: store_knowledge_document_chunks(...) writes the whole chunk set and, in the
+      same call, moves the document to 'ready' (migration 0021, ADR-0030 decision 3).
       On failure: mark_knowledge_document_failed(:id, :reason) with one closed reason code.
       Both are tenant-bound SECURITY DEFINER functions (db/migrations/0020) that act only on a
       'processing' document; a stale report (SQLSTATE 55000) is ignored, never overwritten.
-  5. Generate embeddings and move the document to 'ready': the embeddings slice, not yet
-     implemented (it needs an AI provider, ADR-0019).
+  5. Generate embeddings: the embeddings slice, not yet implemented (it needs an AI provider,
+     ADR-0019). A 'ready' document is searchable by keyword (ADR-0030); how ready documents get
+     their vectors is left to the embeddings ADR.
 ```
 
 **Whole-object reads (Owner ruling G1, PR D).** [ADR-0018](../adr/0018-knowledge-document-object-storage.md)

@@ -31,9 +31,9 @@ type ListState =
 /**
  * Owner decision D1: every completed upload starts as `processing`. Since
  * ADR-0026 (PR D) extraction can move a document to `failed`, shown with a
- * message per reason code (`./failure-messages`). A document whose text was
- * extracted stays `processing` until the embeddings slice (Owner ruling D9):
- * the processing label means it is not yet usable by the assistant.
+ * message per reason code (`./failure-messages`). Since migration 0021
+ * (ADR-0030 decision 3) a document whose text was extracted is `ready`, and
+ * its label says it is ready for search, not that the assistant uses it.
  */
 function statusLabel(status: KnowledgeDocumentItem['status'], t: Dictionary['knowledgeBase']) {
   switch (status) {

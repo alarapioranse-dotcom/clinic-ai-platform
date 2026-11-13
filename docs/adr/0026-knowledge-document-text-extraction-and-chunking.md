@@ -5,6 +5,12 @@
 Accepted — 2026-10-23. Approved by the owner in a comment on
 [PR #108](https://github.com/alarapioranse-dotcom/clinic-ai-platform/pull/108).
 
+The sentence of its section 7 that leaves moving a document to `ready` to the
+embeddings slice, and the first bullet of its Consequences (Owner ruling D9), are superseded by
+[ADR-0030](./0030-staff-keyword-search-over-clinic-documents.md) (accepted 2026-11-13 in
+[PR #135](https://github.com/alarapioranse-dotcom/clinic-ai-platform/pull/135)): since migration
+0021, storing a chunk set makes the document `ready`. The rest of this record stands.
+
 ## Date
 
 2026-10-23. Records the Owner rulings D1-D4, made after a read-only audit, and D5-D9, made after

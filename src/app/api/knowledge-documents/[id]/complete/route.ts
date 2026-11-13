@@ -117,7 +117,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       filename,
     );
     // ADR-0026 (PR D): text extraction runs after the response is sent. The
-    // response itself is unchanged; the document stays `processing`.
+    // response itself is unchanged; the document is `processing` until the
+    // chunk set is stored (then `ready`, ADR-0030) or a failure is recorded.
     // `processKnowledgeDocument` never throws and logs only the document id and
     // an outcome code (Owner ruling G4).
     after(() => processKnowledgeDocument(session.clinicId, document.id));

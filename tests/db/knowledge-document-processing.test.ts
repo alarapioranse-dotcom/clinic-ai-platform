@@ -9,7 +9,8 @@ import { createTestClinic, createTestKnowledgeDocument, createTestStaffMember } 
  * `processKnowledgeDocument` (ADR-0026, PR D) against the real database (migration 0020) and the
  * real extraction worker, with only object storage replaced by an in-memory fake that models
  * HeadObject, the If-Match whole-object read and its outcomes. Proves: every outcome is recorded
- * through the 0020 functions with its closed reason; a stored document stays `processing` (D9);
+ * through the 0020 functions with its closed reason; a stored document becomes `ready` (ADR-0030,
+ * migration 0021);
  * stale reports never overwrite; an unrecordable outcome leaves the document `processing`; one
  * document at a time (G3); logs carry only the document id and an outcome code (G4).
  * Synthetic PDFs only.
@@ -136,14 +137,14 @@ describe('processKnowledgeDocument (ADR-0026, PR D)', () => {
     await closePool();
   });
 
-  it('stores the chunk set of a valid PDF and leaves the document processing (D9)', async () => {
+  it('stores the chunk set of a valid PDF and makes the document ready (ADR-0030)', async () => {
     const { clinic, document, key } = await newDocument('ProcStore');
     objects.set(key, { bytes: fixture('greek.pdf') });
 
     expect(await processKnowledgeDocument(clinic.id, document.id)).toBe('stored');
 
     const state = await stateOf(document.id);
-    expect(state).toMatchObject({ status: 'processing', failed_reason: null });
+    expect(state).toMatchObject({ status: 'ready', failed_reason: null });
     expect(state.text).toBe(
       'Ωράριο λειτουργίας: Δευτέρα έως Παρασκευή. Καθαρισμός δοντιών: 40 ευρώ.',
     );

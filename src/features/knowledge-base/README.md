@@ -43,9 +43,9 @@ length — the full-body read ADR-0021 required a decision for, made by ADR-0026
 section 3), extracts and chunks the text, and records the result through the
 0020 functions (`storeKnowledgeDocumentChunks` / `markKnowledgeDocumentFailed`
 in `./repository.ts`). One document at a time per process; it never throws, and
-it logs only the document id and an outcome code. A stored document stays
-`processing` (D9); a failed one shows an Arabic message per reason on the
-knowledge-base screen.
+it logs only the document id and an outcome code. A stored document becomes
+`ready` in the same call (migration 0021, ADR-0030); a failed one shows a
+message per reason on the knowledge-base screen.
 
 `./extraction/` turns a PDF's bytes into the document's canonical text and its
 chunks, and touches no database or storage itself.

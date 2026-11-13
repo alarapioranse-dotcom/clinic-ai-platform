@@ -242,8 +242,9 @@ export async function markKnowledgeDocumentFailed(
 /**
  * ADR-0028 decision 2: the ids of the context clinic's stuck documents —
  * still `processing`, with no chunk set, and created more than
- * `olderThanMinutes` ago. A document whose text was extracted keeps status
- * `processing` (ADR-0026 D9) but has a chunk set, so it is never listed.
+ * `olderThanMinutes` ago. A document whose chunk set was stored is `ready`
+ * since migration 0021 (ADR-0030); the no-chunk-set condition still keeps any
+ * `processing` row that has one off the list.
  */
 export async function listStuckKnowledgeDocumentIds(
   client: PoolClient,

@@ -251,6 +251,8 @@ describe('knowledge_document_chunks and its write functions (db/migrations/0020,
       priv('knowledge_documents', 'clinic_id', 'SELECT'),
       priv('knowledge_documents', 'failed_reason', 'UPDATE'),
       priv('knowledge_documents', 'id', 'SELECT'),
+      // ADR-0030 (migration 0021): the store function also sets ready_at.
+      priv('knowledge_documents', 'ready_at', 'UPDATE'),
       priv('knowledge_documents', 'status', 'SELECT'),
       priv('knowledge_documents', 'status', 'UPDATE'),
     ]);
@@ -344,11 +346,20 @@ describe('knowledge_document_chunks and its write functions (db/migrations/0020,
     });
     expect(sliced).toEqual(chunks);
 
-    // Status is untouched: the document stays processing (D9).
+    // ADR-0030 decision 3 (migration 0021): storing the chunk set makes the
+    // document ready, in the same call.
     expect(await documentStateAsAdmin(document.id)).toEqual({
-      status: 'processing',
+      status: 'ready',
       failed_reason: null,
     });
+    const readyAt = await withAdmin(async (admin) => {
+      const { rows } = await admin.query<{ ready_at: Date | null }>(
+        'SELECT ready_at FROM knowledge_documents WHERE id = $1',
+        [document.id],
+      );
+      return rows[0]!.ready_at;
+    });
+    expect(readyAt).toBeInstanceOf(Date);
 
     const visibleToOwner = await withTenantContext(clinic.id, (client) =>
       client.query('SELECT count(*)::int AS n FROM knowledge_document_chunks'),
@@ -586,7 +597,7 @@ describe('knowledge_document_chunks and its write functions (db/migrations/0020,
       ),
     ).toBe(NOT_PROCESSING_OR_CHUNKED);
     expect(await documentStateAsAdmin(document.id)).toEqual({
-      status: 'processing',
+      status: 'ready',
       failed_reason: null,
     });
     expect(await chunksAsAdmin(document.id)).toHaveLength(1);
@@ -707,7 +718,7 @@ describe('knowledge_document_chunks and its write functions (db/migrations/0020,
       await second.end();
     }
     expect(await documentStateAsAdmin(document.id)).toEqual({
-      status: 'processing',
+      status: 'ready',
       failed_reason: null,
     });
     expect(await chunksAsAdmin(document.id)).toHaveLength(1);

@@ -1,7 +1,7 @@
 # P1 procedure — apply migration 0021 to production
 
-**Status:** not yet executed. Run it only after the pull request that adds 0021 is merged, and only
-with the Owner's explicit approval. **Scope:** production database `clinic-ai-db`
+**Status:** executed by the Owner on 2026-11-13 from Termux, from the file at main `50a5802` (#137);
+see [Execution record](#execution-record-2026-11-13) at the end. **Scope:** production database `clinic-ai-db`
 (`dpg-daekbjmq1p3s739nc4og-a`) only, logged in as `clinic_ai_platform_user2` and executing as
 `clinic_ai_platform_user`, from the Owner's Termux. This file contains no secret; the database URL is
 typed into Termux with `read -rs` and never written down.
@@ -310,3 +310,20 @@ publicly trusted certificate):
   `VERIFIED`.
 - After the apply the pre-check prints `STOP`, and a second apply fails at the
   `schema_migrations` insert (`duplicate key`), `exit=3`, rolling back everything it ran.
+
+## Execution record (2026-11-13)
+
+Run by the Owner from Termux, following this file as merged in #137 (main `50a5802`):
+
+- Checksum of the file downloaded from `50a5802`: `OK`.
+- Render: point-in-time recovery enabled on `clinic-ai-db` (3-day window); nothing changed.
+- URL guard: `HOST-OK: production clinic-ai-db as clinic_ai_platform_user2`.
+- Pre-check at 19:04:10 UTC: `READY`, every condition `t`, `clinics` = 1. Counts:
+  `documents=0 to_backfill=0`.
+- Apply: started 19:06:34 UTC as `clinic_ai_platform_user`; `GRANT`, `CREATE FUNCTION`, `COMMENT`,
+  three `DO`; `who_before_insert` = `clinic_ai_platform_user`; `INSERT 0 1`; `COMMIT` at
+  19:06:35 UTC; `exit=0`; no `WARNING` or `ERROR`.
+- Post-check: `VERIFIED`, every condition `t`. Counts: `documents=0 to_backfill=0`.
+- Clean-up: `CLEARED`.
+
+Production now runs migrations 0001-0021. No data row changed.

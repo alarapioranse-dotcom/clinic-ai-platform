@@ -13,7 +13,7 @@ knowledge base. See `docs/` for the full plan.
 - **P5 — Knowledge base and AI:** In progress — knowledge-document storage, upload, owner/admin screens and text extraction with chunking (ADR-0026) are done, and documents stuck in processing are failed after 15 minutes (ADR-0028); retrieval and AI replies are not built, and no AI provider is selected (ADR-0019, Proposed)
 - **Localization (ADR-0027, ADR-0029):** Done — the home page and the privacy notice follow the visitor's language, and staff choose Arabic, Greek or English from a switcher on every staff screen. The Greek text still needs a native speaker's review
 
-Production runs migrations 0001-0020. Current status in detail: [`CLAUDE.md`](./CLAUDE.md#status).
+Production runs migrations 0001-0021. Current status in detail: [`CLAUDE.md`](./CLAUDE.md#status).
 
 Details and acceptance criteria per phase: [`docs/03-roadmap.md`](./docs/03-roadmap.md).
 

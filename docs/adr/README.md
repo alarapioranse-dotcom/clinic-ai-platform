@@ -35,7 +35,7 @@ decisions don't need one.
 | [0027](./0027-staff-ui-localization.md)                                | Staff UI localization: Arabic, Greek and English, chosen per staff member           | Accepted |
 | [0028](./0028-stuck-knowledge-documents-and-extraction-isolation.md)   | Stuck knowledge documents and extraction isolation for the pilot                    | Accepted |
 | [0029](./0029-public-pages-follow-the-visitor-locale.md)               | Public pages follow the visitor's language                                          | Accepted |
-| [0030](./0030-staff-keyword-search-over-clinic-documents.md)           | Staff keyword search over clinic documents, without an AI model                     | Proposed |
+| [0030](./0030-staff-keyword-search-over-clinic-documents.md)           | Staff keyword search over clinic documents, without an AI model                     | Accepted |
 
 0010 is intentionally unassigned — reserved for the audit-log erasure strategy named as a follow-up
 in [ADR-0009](./0009-data-residency.md), not yet written.

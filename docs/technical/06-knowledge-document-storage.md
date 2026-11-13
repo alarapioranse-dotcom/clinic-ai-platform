@@ -92,6 +92,12 @@ are not interchangeable and must not be conflated.
   `Range: bytes=0-1023`; HeadObject returns an ETag (without one every completion fails closed
   with a 500); the store honors `If-Match` on GET; the object stays private; and a rejected
   object leaves no `knowledge_documents` row.
+  **Update 2026-11-13:** the storage-side items were verified in production with the application's
+  own key and plain `curl` (`docs/operations/2026-11-13-storage-key-read-check-procedure.md`): the
+  key can read, Scaleway honours `Range: bytes=0-1023` (`206`) and `If-Match` (`412` on a wrong
+  ETag), HeadObject returns an ETag, and the bucket refuses anonymous reads (`403`). The
+  application's own SDK path and the "no row for a rejected object" item still await the first
+  legitimate upload.
 - **Orphan objects are an accepted limitation of this slice.** If the browser's PUT to Scaleway
   succeeds but the client never calls the completion endpoint (a closed tab, a crashed browser, a
   network failure after the PUT but before completion), the object remains in the private bucket
@@ -145,8 +151,9 @@ adding that "any full-body read (extraction, download) requires its own decision
 that decision: after completion, the server reads the whole object (at most 10 MiB, bound to the
 HeadObject ETag) solely to extract its text. Uploads still never pass through the server; no other
 full read exists, and the bytes are never logged, persisted, returned to a client or sent to a
-third party. The read needs object-read permission on the application's storage key, which is
-still unverified in production (a documented gap, ruling G6).
+third party. The read needs object-read permission on the application's storage key; it was
+verified in production on 2026-11-13 with that key and plain `curl` (ruling G6 closed for the key;
+see `docs/operations/2026-11-13-storage-key-read-check-procedure.md`).
 
 **What processing logs.** One line per document: its id and an outcome code (`stored`, a failure
 reason, `stale` or `unrecorded`) — never text, a filename, bytes, a storage key or an exception

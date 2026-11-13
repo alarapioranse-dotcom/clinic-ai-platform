@@ -150,7 +150,7 @@ export function BookAppointment({
       <h2 className="font-display text-lg font-bold">{t.title}</h2>
 
       {booking.status === 'booked' && (
-        <p role="status" className="text-sm font-medium text-emerald-700">
+        <p role="status" className="text-pine text-sm font-medium">
           {format(t.booked, {
             start: new Date(booking.appointment.startsAt).toLocaleString(locale),
             end: new Date(booking.appointment.endsAt).toLocaleString(locale),

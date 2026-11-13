@@ -101,7 +101,7 @@ describe('stuck knowledge documents (ADR-0028)', () => {
     expect(info).not.toHaveBeenCalled();
   });
 
-  it('never fails an old document that has a chunk set (extracted, awaiting embeddings)', async () => {
+  it('never fails an old document that has a chunk set', async () => {
     const { clinic, document } = await newClinic('StuckExtracted');
     const extracted = await document();
     const stored = await withTenantContext(clinic.id, (client) =>
@@ -113,6 +113,16 @@ describe('stuck knowledge documents (ADR-0028)', () => {
       }),
     );
     expect(stored).toBe('stored');
+    // Since migration 0021 (ADR-0030) storing the chunk set makes the document ready.
+    expect(await stateOf(extracted.id)).toEqual({ status: 'ready', failed_reason: null });
+    // A row left `processing` with a chunk set (the state before 0021, which its backfill
+    // removes) is still never failed: the ADR-0028 sweep requires no chunk set.
+    await admin((client) =>
+      client.query(
+        `UPDATE knowledge_documents SET status = 'processing', ready_at = NULL WHERE id = $1`,
+        [extracted.id],
+      ),
+    );
     await backdate(extracted.id, 24 * 60);
 
     await getKnowledgeDocumentsForClinic(clinic.id);

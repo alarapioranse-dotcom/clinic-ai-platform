@@ -20,8 +20,8 @@ import {
  *      signature check on the bytes actually read.
  *   2. Extracts, canonicalises and chunks the text in the worker (PR C).
  *   3. Stores the chunk set, or records the failure, through the 0020
- *      tenant-bound functions. The document stays `processing` after a
- *      successful store (Owner ruling D9).
+ *      tenant-bound functions. A successful store also makes the document
+ *      `ready` (migration 0021, ADR-0030 decision 3).
  *
  * Owner ruling G3: one document at a time per process, so at most one
  * parsing worker exists at once. Owner ruling G4: the only log line is the
@@ -34,7 +34,7 @@ import {
  */
 
 export type ProcessingOutcome =
-  /** The chunk set was stored; the document stays `processing` (D9). */
+  /** The chunk set was stored; the document is now `ready` (ADR-0030). */
   | 'stored'
   /** A failure reason was recorded: the document is now `failed`. */
   | 'too_large'

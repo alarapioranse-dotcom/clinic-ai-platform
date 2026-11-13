@@ -152,7 +152,7 @@ export const ar: Dictionary = {
     columnUploaded: 'تاريخ الرفع',
     columnStatus: 'الحالة',
     statusProcessing: 'قيد المعالجة',
-    statusReady: 'جاهز',
+    statusReady: 'جاهز للبحث',
     statusFailed: 'فشلت المعالجة',
     sizeMegabytes: '{size} م.ب',
     sizeKilobytes: '{size} ك.ب',

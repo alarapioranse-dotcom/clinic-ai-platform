@@ -2,9 +2,8 @@
 
 **Date:** 2026-10-19
 **Status:** Phase 1 (local rehearsal) done; Phase 2 (Render documentation) read; Phase 3 (Render
-drill) has a written and locally rehearsed procedure,
-[`2026-11-15-pitr-restore-drill-procedure.md`](./2026-11-15-pitr-restore-drill-procedure.md), not yet
-executed.
+drill) executed on 2026-11-15 and **passed**: a PITR copy of production matched production exactly
+(see [`2026-11-15-pitr-restore-drill-procedure.md`](./2026-11-15-pitr-restore-drill-procedure.md)).
 **Scope:** How to prove that the production database can be restored, and what has been proven so
 far. This is an operations document, not an ADR.
 
@@ -141,7 +140,7 @@ result.
   The page does not say which database role produces them. Whether they include rows under FORCE
   RLS is **unknown**; they are not relied on until tested.
 
-## Phase 3 — drill on Render (procedure written 2026-11-15; not executed)
+## Phase 3 — drill on Render (executed 2026-11-15: pass)
 
 On 2026-11-15 the Owner chose a new read-only comparison script kept in this repository,
 `scripts/restore-drill-check.sql`, for this drill instead of restore-check v10.3, which was baselined

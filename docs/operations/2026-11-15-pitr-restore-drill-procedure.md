@@ -1,6 +1,6 @@
 # PITR restore drill procedure — production `clinic-ai-db`
 
-**Status:** written and rehearsed locally on 2026-11-15; not yet executed. **Scope:** Phase 3 of
+**Status:** executed by the Owner on 2026-11-15 from Termux and the Render dashboard, from the script at main `2fef02b` (#146): **pass**; see [Execution record](#execution-record-2026-11-15) at the end. **Scope:** Phase 3 of
 [the restore drill plan](./restore-drill-plan.md): restore production into a separate, temporary
 Render database with point-in-time recovery (PITR), compare it with production read-only, and delete
 it the same day. Production is only read. The web service is never pointed at the copy.
@@ -191,3 +191,87 @@ file and in [the restore drill plan](./restore-drill-plan.md) by pull request.
   (open item in the plan).
 - It proves the copy matches production at the moment each was read; it is not proof that every past
   state is recoverable.
+
+## Execution record (2026-11-15)
+
+Run by the Owner, relayed to the implementation agent in chat. Times are Europe/Athens (UTC+02:00)
+unless marked UTC.
+
+| Step               | Result                                                                                                                                                                                                                                                                                                                                   |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Recovery form   | Window: any time in the past 3 days. Plan shown: `0.1c-256mb` (production's). Region and price not shown on the form. Nothing started.                                                                                                                                                                                                   |
+| 2. Script          | Downloaded from `2fef02bc2a22e0f42e659c9f5799e91e1a072817`; `restore-drill-check.sql: OK`.                                                                                                                                                                                                                                               |
+| 3. Production read | URL guard `HOST-OK`; read at `2026-11-15T12:20:12Z`; `exit=0`; 41 lines; `H current_user clinic_ai_platform_user`.                                                                                                                                                                                                                       |
+| 4. Recovery        | Name `clinic-ai-db-drill-20261115`, restore point `2026-11-15 14:21:00` (12:21:00 UTC), Copy Existing Settings: Yes. Started about 14:45, **Available** before 14:53 (about 8 minutes). Info page: region **Frankfurt (EU Central)**, plan `0.1c-256mb`, PostgreSQL 16, service id `dpg-dbsqinafngtc738aru40-a`, storage 21.42% of 1 GB. |
+| 5. Copy read       | Guard `COPY-OK: user=clinic_ai_platform_user2 host=dpg-dbsqinafngtc738aru40-a.frankfurt-postgres.render.com db=clinic_ai_platform_hti2`; `exit=0`.                                                                                                                                                                                       |
+| Comparison         | Both outputs sha256 `c687e6d918f4201ec86341b86554cf2d8f472b02d09ea3e1e1694bf2a6303aed`; `diff`: **IDENTICAL**.                                                                                                                                                                                                                           |
+| 6. Deletion        | The Owner deleted `clinic-ai-db-drill-20261115` the same day, confirmed `clinic-ai-db` still present, and cleared Termux (`CLEARED`).                                                                                                                                                                                                    |
+
+Production output (identical to the copy's; contains only counts, digests, role names and the seed
+clinic's id):
+
+```
+restore-drill-check v1
+H server_major 16
+H session_user clinic_ai_platform_user2
+H current_user clinic_ai_platform_user
+H read_only on
+H in_recovery false
+C roles 12 407a56cf71c3b07217f931649e5865cb
+C memberships 18 8ef182e353f41ce46d11450151aedf90
+C schemas 1 f2c6acf728d21305352deff82d29d38c
+C extensions 3 2dd43f0fa47a58d2dd4f7037aecf9140
+C relations 11 1b382397f393847860dfad26e0bc38fb
+C columns 85 cfd3849b4ca6951a8a498ebd455988f7
+C policies 13 2ce0b465d6af42984133feef9e98bba8
+C functions 232 c7a4d75d292b833cb6aeb44ff9f7c620
+C constraints 72 a811a5341ada27eea71bc1cf5539669f
+C indexes 32 985695e4847f2a39af2276dd682262a4
+C triggers 3 ca2e5c2c7f6b08a0d0c42469554b61a9
+C default_privileges 4 03265f3ed926ed6c9579118a0ae71b87
+R schema_migrations 21 fc47a60fb5a1d14cbe8790dc2175c1bc
+R clinics 1 db73335b96dec50f9ef203f25a14b15d
+X 00000000-0000-0000-0000-000000000001 true
+T 00000000-0000-0000-0000-000000000001 appointments 0 d41d8cd98f00b204e9800998ecf8427e
+T 00000000-0000-0000-0000-000000000001 conversations 0 d41d8cd98f00b204e9800998ecf8427e
+T 00000000-0000-0000-0000-000000000001 invitations 0 d41d8cd98f00b204e9800998ecf8427e
+T 00000000-0000-0000-0000-000000000001 knowledge_document_chunks 0 d41d8cd98f00b204e9800998ecf8427e
+T 00000000-0000-0000-0000-000000000001 knowledge_documents 0 d41d8cd98f00b204e9800998ecf8427e
+T 00000000-0000-0000-0000-000000000001 messages 0 d41d8cd98f00b204e9800998ecf8427e
+T 00000000-0000-0000-0000-000000000001 patients 0 d41d8cd98f00b204e9800998ecf8427e
+T 00000000-0000-0000-0000-000000000001 staff_members 1 e3f054a25cf5dc5b5ffb1fb7e8015955
+T 00000000-0000-0000-0000-000000000001 staff_sessions 1 7bcf43cd6c8663f0472841c37437af58
+X ffffffff-ffff-4fff-bfff-ffffffffffff true
+T ffffffff-ffff-4fff-bfff-ffffffffffff appointments 0 d41d8cd98f00b204e9800998ecf8427e
+T ffffffff-ffff-4fff-bfff-ffffffffffff conversations 0 d41d8cd98f00b204e9800998ecf8427e
+T ffffffff-ffff-4fff-bfff-ffffffffffff invitations 0 d41d8cd98f00b204e9800998ecf8427e
+T ffffffff-ffff-4fff-bfff-ffffffffffff knowledge_document_chunks 0 d41d8cd98f00b204e9800998ecf8427e
+T ffffffff-ffff-4fff-bfff-ffffffffffff knowledge_documents 0 d41d8cd98f00b204e9800998ecf8427e
+T ffffffff-ffff-4fff-bfff-ffffffffffff messages 0 d41d8cd98f00b204e9800998ecf8427e
+T ffffffff-ffff-4fff-bfff-ffffffffffff patients 0 d41d8cd98f00b204e9800998ecf8427e
+T ffffffff-ffff-4fff-bfff-ffffffffffff staff_members 0 d41d8cd98f00b204e9800998ecf8427e
+T ffffffff-ffff-4fff-bfff-ffffffffffff staff_sessions 0 d41d8cd98f00b204e9800998ecf8427e
+restore-drill-check end
+```
+
+Observations:
+
+- **Pass.** The PITR copy matched production in every catalog component (roles, memberships, RLS and
+  FORCE RLS flags, grants, policies, functions, constraints, indexes, triggers, default privileges)
+  and in every row read under the seed clinic's context. Under a non-existent clinic every RLS table
+  returned 0 rows in both.
+- The copy's database is named `clinic_ai_platform_hti2`, not `clinic_ai_platform`: Render renames
+  the database on recovery. The same login worked, with the same `current_user`. A real recovery
+  would need `DATABASE_URL` and `APP_DATABASE_URL` changed to the new host and database name.
+- Production's `schemas`, `extensions`, `relations`, `columns`, `policies`, `functions`,
+  `constraints`, `indexes`, `triggers` and `default_privileges` lines are identical to the local
+  rehearsal's on migrations 0001-0021, so production's schema matches the repository. `roles` and
+  `memberships` differ from the rehearsal (Render's own roles), and `schema_migrations` differs
+  (application times), as expected.
+- Production holds one `staff_sessions` row. A follow-up read-only query the same day (seed clinic
+  context, no token hash read) showed it was created `2026-09-06 16:34:47 UTC` for the seed
+  receptionist, revoked `2026-09-09 21:07:44 UTC`, expired `2026-09-13`, and the receptionist is
+  `deactivated`. It is the deployment-validation session from September, not new activity, and
+  cannot authenticate (the lookup requires an active member and an unexpired, unrevoked session).
+  The earlier note that production had "no sessions" was inaccurate: it has no usable session.
+- The drill measured about 8 minutes from start to Available for a database using about 214 MB.

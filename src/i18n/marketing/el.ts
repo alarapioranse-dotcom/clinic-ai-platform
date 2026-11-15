@@ -1,9 +1,10 @@
 import type { MarketingDictionary } from './en';
 
 /**
- * Greek text of the public pages. Drafted by the implementation agent and not
- * yet reviewed by a native Greek speaker (ADR-0027 decision 8, ADR-0029
- * decision 5).
+ * Greek text of the public pages. Reviewed by a native Greek speaker on
+ * 2026-11-15 with no corrections
+ * (docs/operations/2026-11-15-greek-native-speaker-review-record.md); any
+ * change needs its own review (ADR-0027 decision 8, ADR-0029 decision 5).
  */
 export const el: MarketingDictionary = {
   nav: {

@@ -7,8 +7,9 @@
  * file in the same pull request as any change to what data is stored, where
  * it is hosted, which sub-processors are used, or how the AI assistant works.
  *
- * The Greek text needs a native speaker's review, and the whole notice needs
- * legal review, before the first clinic goes live.
+ * The Greek text had a native speaker's language review on 2026-11-15
+ * (docs/operations/2026-11-15-greek-native-speaker-review-record.md). The
+ * whole notice still needs legal review before the first clinic goes live.
  */
 export const PRIVACY_OPERATOR = {
   name: 'AHMED JUMA',

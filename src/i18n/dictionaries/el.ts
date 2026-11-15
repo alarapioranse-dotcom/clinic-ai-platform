@@ -5,8 +5,9 @@ import type { Dictionary } from './index';
  * Greek staff UI text (ADR-0027 slice 3), typed against the English
  * dictionary, which defines the contract. Formal plural address throughout.
  *
- * ADR-0027 decision 6: this text must be reviewed by a native Greek speaker,
- * recorded in the pull request, before any Greek screen is shown to a clinic.
+ * Reviewed by a native Greek speaker on 2026-11-15 with no corrections
+ * (docs/operations/2026-11-15-greek-native-speaker-review-record.md). Any
+ * change to this text needs its own review (ADR-0027 decision 8).
  *
  * Sentences that take a weekday (`{day}`) put it after a colon, so the day
  * name stays in the nominative and needs no inflection.

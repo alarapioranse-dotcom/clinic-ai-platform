@@ -39,11 +39,13 @@ import { withTenantContext } from '@/lib/db';
 import {
   receiveInboundMessageForPatient,
   listConversations,
+  listConversationSummaries,
   getConversationWithMessages,
   insertStaffMessage,
   ConversationNotFoundError,
   type ReceiveInboundMessageResult,
   type Conversation,
+  type ConversationSummary,
   type Message,
   type ConversationWithMessages,
   type LinkedAppointment,
@@ -52,6 +54,7 @@ import {
 export type {
   ReceiveInboundMessageResult,
   Conversation,
+  ConversationSummary,
   Message,
   ConversationWithMessages,
   LinkedAppointment,
@@ -70,6 +73,17 @@ export async function receiveInboundMessage(
 
 export async function listConversationsForClinic(clinicId: string): Promise<Conversation[]> {
   return withTenantContext(clinicId, (client) => listConversations(client));
+}
+
+/**
+ * The staff conversation list (`GET /api/conversations`): each conversation
+ * with its patient's display name and a preview of its latest message, most
+ * recent activity first.
+ */
+export async function listConversationSummariesForClinic(
+  clinicId: string,
+): Promise<ConversationSummary[]> {
+  return withTenantContext(clinicId, (client) => listConversationSummaries(client));
 }
 
 export async function getConversation(

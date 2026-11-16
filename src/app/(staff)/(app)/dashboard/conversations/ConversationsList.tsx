@@ -11,6 +11,8 @@ interface ConversationRow {
   id: string;
   patientId: string;
   createdAt: string;
+  patientName: string | null;
+  lastMessage: { preview: string; senderType: string; sentAt: string } | null;
 }
 
 type ListState =
@@ -82,20 +84,37 @@ export function ConversationsList({
 
   return (
     <div className="mt-8 overflow-x-auto">
-      <table className="w-full min-w-[28rem] border-collapse text-sm">
+      <table className="w-full min-w-[40rem] border-collapse text-sm">
         <thead>
           <tr className="border-line border-b">
-            <th className="text-start px-3 py-2 font-medium">{t.columnStarted}</th>
+            <th className="text-start px-3 py-2 font-medium">{t.columnPatient}</th>
+            <th className="text-start px-3 py-2 font-medium">{t.columnLastMessage}</th>
+            <th className="text-start px-3 py-2 font-medium">{t.columnLastActivity}</th>
             <th className="text-start px-3 py-2 font-medium"></th>
           </tr>
         </thead>
         <tbody>
           {state.conversations.map((conversation) => (
-            <tr key={conversation.id} className="border-line border-b">
-              <td className="px-3 py-2">
-                {new Date(conversation.createdAt).toLocaleDateString(locale)}
+            <tr key={conversation.id} className="border-line border-b align-top">
+              <td className="px-3 py-3 font-medium" dir="auto">
+                {conversation.patientName ?? (
+                  <span className="text-muted font-normal">{t.unnamedPatient}</span>
+                )}
               </td>
-              <td className="px-3 py-2 text-end">
+              <td className="text-muted max-w-md px-3 py-3">
+                {conversation.lastMessage ? (
+                  <span className="line-clamp-2" dir="auto">
+                    {conversation.lastMessage.senderType === 'staff' ? `${t.fromStaff} ` : ''}
+                    {conversation.lastMessage.preview}
+                  </span>
+                ) : null}
+              </td>
+              <td className="text-muted whitespace-nowrap px-3 py-3">
+                {new Date(
+                  conversation.lastMessage?.sentAt ?? conversation.createdAt,
+                ).toLocaleString(locale, { dateStyle: 'short', timeStyle: 'short' })}
+              </td>
+              <td className="px-3 py-3 text-end">
                 <Link
                   href={`/dashboard/conversations/${conversation.id}`}
                   className="text-pine hover:text-pine-deep font-medium"

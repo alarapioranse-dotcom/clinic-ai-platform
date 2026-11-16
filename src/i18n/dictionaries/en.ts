@@ -21,6 +21,7 @@ export const en = {
   nav: {
     ariaLabel: 'Dashboard navigation',
     dashboard: 'Dashboard',
+    conversations: 'Conversations',
     knowledgeBase: 'Knowledge base',
     clinicSettings: 'Clinic settings',
     staff: 'Staff',
@@ -91,7 +92,11 @@ export const en = {
     loadError: 'Could not load conversations',
     retry: 'Try again',
     empty: 'No conversations yet',
-    columnStarted: 'Started',
+    columnPatient: 'Patient',
+    columnLastMessage: 'Last message',
+    columnLastActivity: 'Last activity',
+    unnamedPatient: 'Patient without a name',
+    fromStaff: 'Staff:',
     view: 'View',
   },
   conversationDetail: {

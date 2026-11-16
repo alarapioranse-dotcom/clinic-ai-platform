@@ -6,7 +6,7 @@ import {
   ForbiddenRoleError,
   SESSION_COOKIE_NAME,
 } from '@/features/auth';
-import { listConversationsForClinic } from '@/features/conversations';
+import { listConversationSummariesForClinic } from '@/features/conversations';
 
 /**
  * docs/technical/03-api-contracts.md: GET /api/conversations, all four roles
@@ -37,6 +37,6 @@ export async function GET(request: NextRequest) {
     throw err;
   }
 
-  const conversations = await listConversationsForClinic(session.clinicId);
+  const conversations = await listConversationSummariesForClinic(session.clinicId);
   return NextResponse.json({ data: conversations });
 }

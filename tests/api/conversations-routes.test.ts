@@ -149,6 +149,39 @@ describe('GET /api/conversations', () => {
       expect(conversation.clinicId).toBe(clinicOwn.id);
     }
   });
+
+  it("returns each conversation's patient name and a preview of its latest message", async () => {
+    const clinic = await createTestClinic('ConvListSummary');
+    const token = await signInAs(clinic.id, 'ConvListSummary', 'receptionist');
+    const patient = await createPatient(clinic.id, {
+      phoneNumber: '+201000000603',
+      displayName: 'Synthetic Summary Patient',
+    });
+    const { conversationId } = await receiveInboundMessage(
+      clinic.id,
+      patient.id,
+      'when are you open?',
+    );
+
+    const response = await conversationsRoute(
+      getRequest('http://localhost/api/conversations', token),
+    );
+    expect(response.status).toBe(200);
+    const body: {
+      data: Array<{
+        id: string;
+        patientName: string | null;
+        lastMessage: { preview: string; senderType: string; sentAt: string } | null;
+      }>;
+    } = await response.json();
+    const row = body.data.find((c) => c.id === conversationId);
+    expect(row?.patientName).toBe('Synthetic Summary Patient');
+    expect(row?.lastMessage).toMatchObject({
+      preview: 'when are you open?',
+      senderType: 'patient',
+    });
+    expect(Number.isNaN(Date.parse(row?.lastMessage?.sentAt ?? ''))).toBe(false);
+  });
 });
 
 /**

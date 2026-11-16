@@ -490,6 +490,38 @@ Follow-ups drafted for the owner on 2026-11-13 (not yet sent when this section w
 
 Neither OVHcloud nor Scaleway passes gate 1 (Contract) as of 2026-11-13. No provider is selected.
 
+### Vendor correspondence, 2026-11-13 to 2026-11-16 (Scaleway)
+
+Both follow-ups above were sent from the owner's mailbox on 2026-11-13. Scaleway's privacy team
+answered on 2026-11-16 in thread `4PGX1W-23W1L`. Type: correspondence only. What Scaleway stated:
+
+- **14-day ceiling.** Scaleway does not execute bespoke contractual amendments or DPA addenda for
+  this retention period. The up-to-14-day diagnostic retention is "governed strictly by our
+  technical and privacy documentation rather than individualized contract modifications", pointing
+  to the Generative APIs Data Privacy Policy
+  (`https://www.scaleway.com/en/docs/generative-apis/reference-content/data-privacy/`). This
+  withdraws, for an individual customer account, the offer of 2026-10-27 to make the ceiling binding
+  by a DPA schedule or amendment, which that message had tied to a "DPA / Enterprise contract".
+- **Security-incident records.** Scaleway confirmed in writing that standard security-incident
+  records and audit logs never contain the content of Generative APIs requests or responses. Those
+  records (up to one year) hold technical metadata only: timestamps, source and destination IP
+  addresses, Project and Organization IDs, HTTP status codes, token counts and firewall or IDS
+  alerts. Request content is captured only in rare cases of acute technical failure or abuse, is
+  bound by the 14-day ceiling, and is never copied into the one-year records.
+- **DPA and register.** The DPA published on the Scaleway contracts portal
+  (`https://www.scaleway.com/en/contracts/`), version of 1 June 2024, applies automatically to a new
+  account on acceptance of the General Terms of Services. The official sub-processor register is
+  `https://www.scaleway.com/en/subprocessorlist/`. Neither document was opened for this section.
+
+Consequences for the evidence model: nothing moves to VERIFIED. The incident-record question is now
+answered in writing, which narrows Scaleway's open retention items to one: the 14-day ceiling rests
+on published documentation and the Specific Conditions for AI Services, not on a clause the owner can
+sign. Whether that is acceptable for health data is a question for the external adviser, together
+with the HDS question. The DPA of 1 June 2024 and the register still have to be read against
+ADR-0009 §4. OVHcloud had not answered the follow-up of 2026-11-13 as of 2026-11-16.
+
+Neither OVHcloud nor Scaleway passes gate 1 (Contract) as of 2026-11-16. No provider is selected.
+
 ### Classification: every mandatory constraint is VERIFICATION REQUIRED, for every candidate
 
 This classification predates the 2026-10-23 evidence above, which marks one exception: Scaleway's

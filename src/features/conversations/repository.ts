@@ -18,6 +18,23 @@ export interface Conversation {
   createdAt: Date;
 }
 
+/** Longest message preview the conversation list carries, in characters. */
+export const CONVERSATION_PREVIEW_MAX_CHARS = 140;
+
+/**
+ * One row of the staff conversation list: the conversation, its patient's
+ * display name and its latest message, cut to a short preview. The full
+ * message history stays behind `getConversationWithMessages`.
+ */
+export interface ConversationSummary extends Conversation {
+  patientName: string | null;
+  lastMessage: {
+    preview: string;
+    senderType: string;
+    sentAt: Date;
+  } | null;
+}
+
 export interface Message {
   id: string;
   clinicId: string;
@@ -282,6 +299,57 @@ export async function listConversations(client: PoolClient): Promise<Conversatio
      ORDER BY created_at`,
   );
   return rows.map(toConversation);
+}
+
+/**
+ * The staff conversation list: every conversation visible in the caller's
+ * transaction (RLS decides which), with its patient's display name and its
+ * latest message, most recent activity first. A conversation always has at
+ * least one message (deferred trigger in migration 0009); the LEFT JOIN and
+ * the `created_at` fallback only keep the query total if that ever changed.
+ * Ties on time fall back to the conversation id, so the order is stable.
+ */
+export async function listConversationSummaries(
+  client: PoolClient,
+): Promise<ConversationSummary[]> {
+  const { rows } = await client.query<{
+    id: string;
+    clinic_id: string;
+    patient_id: string;
+    created_at: Date;
+    patient_name: string | null;
+    last_preview: string | null;
+    last_sender_type: string | null;
+    last_sent_at: Date | null;
+  }>(
+    `SELECT c.id, c.clinic_id, c.patient_id, c.created_at,
+            p.display_name AS patient_name,
+            pg_catalog.left(m.content, $1) AS last_preview,
+            m.sender_type AS last_sender_type,
+            m.sent_at AS last_sent_at
+     FROM conversations c
+     JOIN patients p ON p.id = c.patient_id AND p.clinic_id = c.clinic_id
+     LEFT JOIN LATERAL (
+       SELECT content, sender_type, sent_at
+       FROM messages
+       WHERE conversation_id = c.id AND clinic_id = c.clinic_id
+       ORDER BY sent_at DESC, id DESC
+       LIMIT 1
+     ) m ON true
+     ORDER BY COALESCE(m.sent_at, c.created_at) DESC, c.id`,
+    [CONVERSATION_PREVIEW_MAX_CHARS],
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    clinicId: row.clinic_id,
+    patientId: row.patient_id,
+    createdAt: row.created_at,
+    patientName: row.patient_name,
+    lastMessage:
+      row.last_sent_at === null || row.last_preview === null || row.last_sender_type === null
+        ? null
+        : { preview: row.last_preview, senderType: row.last_sender_type, sentAt: row.last_sent_at },
+  }));
 }
 
 /**

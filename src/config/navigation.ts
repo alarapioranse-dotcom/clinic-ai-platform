@@ -2,7 +2,7 @@ import type { StaffRole } from '@/types';
 
 export interface AppNavItem {
   /** Key of the label in the dictionary's `nav` namespace (ADR-0027). */
-  labelKey: 'dashboard' | 'knowledgeBase' | 'clinicSettings' | 'staff';
+  labelKey: 'dashboard' | 'conversations' | 'knowledgeBase' | 'clinicSettings' | 'staff';
   href: string;
   /**
    * Staff roles that see this item. Omitted = every signed-in role. This only
@@ -21,6 +21,7 @@ export interface AppNavItem {
  */
 export const appNav: AppNavItem[] = [
   { labelKey: 'dashboard', href: '/dashboard' },
+  { labelKey: 'conversations', href: '/dashboard/conversations' },
   { labelKey: 'knowledgeBase', href: '/dashboard/knowledge-base', roles: ['owner', 'admin'] },
   { labelKey: 'clinicSettings', href: '/dashboard/settings/clinic', roles: ['owner', 'admin'] },
   { labelKey: 'staff', href: '/dashboard/staff', roles: ['owner', 'admin'] },

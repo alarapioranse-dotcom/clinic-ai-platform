@@ -22,6 +22,7 @@ export const el: Dictionary = {
   nav: {
     ariaLabel: 'Πλοήγηση πίνακα ελέγχου',
     dashboard: 'Πίνακας ελέγχου',
+    conversations: 'Συνομιλίες',
     knowledgeBase: 'Βάση γνώσης',
     clinicSettings: 'Ρυθμίσεις ιατρείου',
     staff: 'Προσωπικό',
@@ -95,7 +96,11 @@ export const el: Dictionary = {
     loadError: 'Δεν ήταν δυνατή η φόρτωση των συνομιλιών',
     retry: 'Δοκιμάστε ξανά',
     empty: 'Δεν υπάρχουν ακόμη συνομιλίες',
-    columnStarted: 'Έναρξη',
+    columnPatient: 'Ασθενής',
+    columnLastMessage: 'Τελευταίο μήνυμα',
+    columnLastActivity: 'Τελευταία δραστηριότητα',
+    unnamedPatient: 'Ασθενής χωρίς όνομα',
+    fromStaff: 'Προσωπικό:',
     view: 'Προβολή',
   },
   conversationDetail: {

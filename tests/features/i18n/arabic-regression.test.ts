@@ -16,6 +16,9 @@ import slice1 from '../../fixtures/ar-dictionary-slice-1.json';
  * ready for search, because since migration 0021 a document is `ready` once it
  * is searchable, not once the assistant uses it. ADR-0030 also adds the
  * `knowledgeSearch` namespace (decision 5), all of it Arabic.
+ * Conversation list (2026-11-16): the navigation gains a Conversations link,
+ * and the conversation list shows patient, last message and last activity
+ * instead of only the start date, so `conversations.columnStarted` goes.
  */
 type Tree = { [key: string]: string | Tree };
 
@@ -37,6 +40,15 @@ const ADR_0030 = 'knowledgeBase.statusReady';
 const D3_PREFIXES = ['conversationDetail.senderTypes.', 'conversationDetail.appointmentStatuses.'];
 const isD3 = (path: string) => D3_PREFIXES.some((prefix) => path.startsWith(prefix));
 const ADR_0030_PREFIX = 'knowledgeSearch.';
+const CONVERSATION_LIST_ADDED = [
+  'nav.conversations',
+  'conversations.columnPatient',
+  'conversations.columnLastMessage',
+  'conversations.columnLastActivity',
+  'conversations.unnamedPatient',
+  'conversations.fromStaff',
+];
+const CONVERSATION_LIST_REMOVED = ['conversations.columnStarted'];
 
 describe('Arabic dictionary compared with slice 1', () => {
   it('reads a non-trivial slice 1 fixture', () => {
@@ -45,7 +57,7 @@ describe('Arabic dictionary compared with slice 1', () => {
 
   it('keeps every slice 1 string byte for byte, except D2 and the ADR-0030 label', () => {
     for (const [path, text] of before) {
-      if (path === D2 || path === ADR_0030) continue;
+      if (path === D2 || path === ADR_0030 || CONVERSATION_LIST_REMOVED.includes(path)) continue;
       expect(after.get(path), path).toBe(text);
     }
   });
@@ -60,17 +72,25 @@ describe('Arabic dictionary compared with slice 1', () => {
     expect(after.get(ADR_0030)).toBe('جاهز للبحث');
   });
 
-  it('adds only the D3 labels and the ADR-0030 search strings, and every one of them is Arabic', () => {
+  it('adds only the D3 labels, the ADR-0030 search strings and the conversation-list labels, all Arabic', () => {
     const added = [...after.keys()].filter((path) => !before.has(path));
     expect(added.filter(isD3).length).toBe(6);
     expect(added.filter((path) => path.startsWith(ADR_0030_PREFIX)).length).toBe(13);
+    expect(added.filter((path) => CONVERSATION_LIST_ADDED.includes(path)).sort()).toEqual(
+      [...CONVERSATION_LIST_ADDED].sort(),
+    );
     for (const path of added) {
-      expect(isD3(path) || path.startsWith(ADR_0030_PREFIX), path).toBe(true);
+      expect(
+        isD3(path) || path.startsWith(ADR_0030_PREFIX) || CONVERSATION_LIST_ADDED.includes(path),
+        path,
+      ).toBe(true);
       expect(after.get(path), path).toMatch(/\p{Script=Arabic}/u);
     }
   });
 
-  it('removes nothing', () => {
-    for (const path of before.keys()) expect(after.has(path), path).toBe(true);
+  it('removes nothing except the replaced conversation-list column', () => {
+    for (const path of before.keys()) {
+      expect(after.has(path), path).toBe(!CONVERSATION_LIST_REMOVED.includes(path));
+    }
   });
 });

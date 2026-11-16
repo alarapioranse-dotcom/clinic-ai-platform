@@ -21,6 +21,7 @@ export const ar: Dictionary = {
   nav: {
     ariaLabel: 'التنقل داخل لوحة التحكم',
     dashboard: 'لوحة التحكم',
+    conversations: 'المحادثات',
     knowledgeBase: 'قاعدة المعرفة',
     clinicSettings: 'إعدادات العيادة',
     staff: 'الطاقم',
@@ -91,7 +92,11 @@ export const ar: Dictionary = {
     loadError: 'تعذر تحميل المحادثات',
     retry: 'إعادة المحاولة',
     empty: 'لا توجد محادثات بعد',
-    columnStarted: 'تاريخ البدء',
+    columnPatient: 'المريض',
+    columnLastMessage: 'آخر رسالة',
+    columnLastActivity: 'آخر نشاط',
+    unnamedPatient: 'مريض بلا اسم',
+    fromStaff: 'الموظفون:',
     view: 'عرض',
   },
   conversationDetail: {
